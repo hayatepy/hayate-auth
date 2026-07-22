@@ -32,10 +32,15 @@ jobs:
       - run: uv run ruff format --check src tests
       - run: uv run pytest -q
 
-  # The acceptance app: login-protected TODO against the editable package.
+  # Acceptance apps against the editable package: the login-protected TODO,
+  # and the MCP server + authorization server driven by the official SDK client.
   example:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        example: [todo, mcp-oauth]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -44,9 +49,9 @@ jobs:
         with:
           python-version: "3.14"
       - run: uv sync
-        working-directory: examples/todo
+        working-directory: examples/${{ matrix.example }}
       - run: uv run pytest -q
-        working-directory: examples/todo
+        working-directory: examples/${{ matrix.example }}
 
   # Supply-chain audit of these workflows (https://docs.zizmor.sh).
   lint-workflows:

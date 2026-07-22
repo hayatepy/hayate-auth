@@ -4,12 +4,14 @@ Standards-first authentication for [hayate](https://github.com/hayatepy/hayate) 
 a mountable, better-auth-style auth handler built on the WHATWG Request/Response
 model.
 
-> **Status: alpha (0.5.x).** Email+password, sessions, CSRF, email
+> **Status: alpha (0.6.x).** Email+password, sessions, CSRF, email
 > verification, password reset, **OAuth 2.1 + PKCE** (Google / GitHub), **TOTP
-> two-factor**, and **API keys** are implemented and attack-regression-tested;
-> a `generate` CLI and a Cloudflare D1 adapter ship too. Not yet
-> security-audited — see [SECURITY.md](SECURITY.md). The internal design memo
-> (Japanese) lives in [DESIGN.md](DESIGN.md).
+> two-factor**, **API keys**, and an **OAuth 2.1 authorization server** (AS
+> mode: RFC 8414 metadata, RFC 7591 dynamic registration, PKCE-only code +
+> refresh grants) are implemented and attack-regression-tested; a `generate`
+> CLI and a Cloudflare D1 adapter ship too. Not yet security-audited — see
+> [SECURITY.md](SECURITY.md). The internal design memo (Japanese) lives in
+> [DESIGN.md](DESIGN.md).
 
 ```python
 import os
@@ -48,19 +50,49 @@ see [examples/todo](examples/todo).
 | POST `/two-factor/enable` · `/verify` · `/disable` | TOTP (RFC 6238) enrollment |
 | POST `/sign-in/two-factor` | Second step when 2FA is on |
 | POST `/api-key/create` · `/verify` · `/delete` · GET `/api-key/list` | API keys (hashed, scoped, expiring) |
+| GET `/oauth2/authorize` · POST `/oauth2/consent` · `/oauth2/token` · `/oauth2/register` | AS mode: OAuth 2.1 authorization server |
 
-API keys double as the bridge to [hayate-mcp](https://github.com/hayatepy/hayate-mcp):
-`auth.verify_api_key` plugs straight into its OAuth Resource Server, so an API
-key protects an MCP server in one line:
+## AS mode: be the OAuth authorization server
+
+Pass an `AuthorizationServer` config and your app *issues* OAuth 2.1 tokens —
+authorization-code + PKCE (S256 only), refresh rotation with reuse detection,
+RFC 8414 metadata at `/.well-known/oauth-authorization-server`, and open
+RFC 7591 dynamic client registration (what MCP clients expect). Tokens are
+opaque and stored hashed; login and consent pages stay yours (`login_url` /
+`consent_url`), the consent decision is one JSON POST.
+
+```python
+from hayate_auth import Auth, AuthorizationServer
+
+auth = Auth(
+    secret=os.environ["AUTH_SECRET"],
+    adapter=adapter,
+    authorization_server=AuthorizationServer(
+        issuer="https://app.example.com",
+        login_url="/login",
+        consent_url="/consent",
+        scopes_supported=("mcp",),
+    ),
+)
+```
+
+Paired with [hayate-mcp](https://github.com/hayatepy/hayate-mcp)'s resource
+server, that is an **MCP server and its authorization server in one app** —
+the flow MCP Inspector and Claude Code drive end to end
+([examples/mcp-oauth](examples/mcp-oauth)):
 
 ```python
 from hayate_mcp import Authorization, McpMount
 McpMount(server, authorization=Authorization(
-    resource="https://mcp.example.com",
-    authorization_servers=["https://auth.example.com"],
-    verify_token=auth.verify_api_key,
+    resource="https://app.example.com/mcp",
+    authorization_servers=["https://app.example.com"],
+    verify_token=auth.oauth_token_verifier(resource="https://app.example.com/mcp"),
 )).register(app)
 ```
+
+API keys are the lighter-weight bridge to the same resource server —
+`verify_token=auth.verify_api_key` protects an MCP server with a static key
+instead of the full OAuth dance.
 
 With TOTP enabled, `/sign-in/email` returns `{"two_factor_required": true}` plus
 a short-lived signed challenge cookie instead of a session; the client then

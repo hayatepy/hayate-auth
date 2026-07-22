@@ -1,4 +1,4 @@
-# OWASP ASVS coverage (V6 Authentication / V7 Session Management)
+# OWASP ASVS coverage (V6 Authentication / V7 Session Management / V10 OAuth)
 
 Ratchet table per DESIGN §13: the "covered" count only goes up. Requirements
 are summarized against OWASP ASVS 5.0 chapter scopes; exact requirement IDs
@@ -42,4 +42,23 @@ release. Status values: **covered** (implemented + regression-tested),
 | Open-redirect defense on OAuth callback_url | covered | `oauth.py::_redirect_allowed`, `tests/test_oauth.py::test_open_redirect_callback_url_is_rejected` |
 | Idle/sliding timeout, active-session listing, revoke-others | planned (v0.3+) | |
 
-**Ratchet: 25 covered** (raise-only; update this line with every release).
+## V10 — OAuth (AS mode, v0.6)
+
+| Requirement (summary) | Status | Evidence |
+|---|---|---|
+| redirect_uri validated by exact match against registered values (loopback ports exempt per RFC 8252 §7.3) | covered | `tests/test_authorization_server.py::test_authorize_unregistered_redirect_answers_directly`, `::test_token_rejects_redirect_uri_mismatch`, `::test_authorize_loopback_port_may_vary` |
+| Authorization codes are single-use; replay revokes every token the code issued | covered | `::test_code_replay_revokes_the_tokens_it_issued` |
+| Authorization codes are short-lived (default 5 min) and expiry is enforced | covered | `::test_token_rejects_expired_code` |
+| PKCE required for all clients, S256 only (plain rejected) | covered | `::test_authorize_error_redirects`, `::test_token_rejects_wrong_pkce_verifier` |
+| Refresh tokens rotate on use; reuse of a rotated token revokes the family | covered | `::test_refresh_rotation_and_reuse_detection` |
+| Codes are bound to the requesting client (no cross-client exchange) | covered | `::test_token_rejects_another_clients_code`, `::test_refresh_rejects_other_clients_token` |
+| Confidential clients authenticate with their registered method; wrong secret/method rejected | covered | `::test_confidential_client_authentication`, `::test_auth_method_must_match_registration` |
+| Codes, access/refresh tokens, and client secrets stored only as SHA-256 digests | covered | `::test_register_confidential_client_returns_secret_once`, `authorization_server.py` |
+| Tokens are audience-constrained (RFC 8707 resource) end to end | covered | `::test_token_resource_must_match_the_code`, `::test_verifier_factory_enforces_resource` |
+| User consent obtained per client, recorded, and re-required when scope widens | covered | `::test_authorize_first_time_redirects_to_consent`, `::test_consent_cookie_is_bound_to_the_user`, `::test_authorize_widening_scope_needs_fresh_consent` |
+| Refresh exchange cannot widen scope | covered | `::test_refresh_scope_may_narrow_but_not_widen` |
+| Token responses are uncacheable (`Cache-Control: no-store`) | covered | `::test_token_response_is_uncacheable` |
+| Anti-automation on open dynamic client registration | external | rate limiting stays the hayate middleware / infrastructure mandate (DESIGN §9) |
+| Token revocation / introspection endpoints | planned (evidence-gated) | DESIGN §19.5 |
+
+**Ratchet: 37 covered** (raise-only; update this line with every release).
