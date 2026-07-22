@@ -264,4 +264,8 @@ ROUTES = {
     ("POST", "/api-key/verify"): _lazy("api_key", "verify"),
     ("GET", "/api-key/list"): _lazy("api_key", "list_keys"),
     ("POST", "/api-key/delete"): _lazy("api_key", "delete"),
+    ("GET", "/oauth2/authorize"): _lazy("authorization_server", "authorize"),
+    ("POST", "/oauth2/consent"): _lazy("authorization_server", "consent"),
+    ("POST", "/oauth2/token"): _lazy("authorization_server", "token"),
+    ("POST", "/oauth2/register"): _lazy("authorization_server", "register_client"),
 }

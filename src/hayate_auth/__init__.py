@@ -3,6 +3,7 @@
 from . import totp
 from .adapter import Adapter, Where
 from .auth import Auth
+from .authorization_server import AuthorizationServer
 from .crypto import (
     CryptoBackend,
     Pbkdf2Backend,
@@ -17,6 +18,7 @@ __version__ = "0.5.0"
 __all__ = [
     "Adapter",
     "Auth",
+    "AuthorizationServer",
     "CryptoBackend",
     "OAuthProvider",
     "Pbkdf2Backend",

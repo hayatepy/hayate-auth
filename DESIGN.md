@@ -394,3 +394,103 @@ hayate-auth/
 | ライセンス / 体制 | MIT、個人名義(Yusuke Hayashi)。本体と同じ |
 | 依存 | `hayate` のみ。暗号・DB・メールはすべて protocol |
 | 最低 Python | 3.12(本体に合わせる) |
+
+---
+
+## 19. AS モード — OAuth Authorization Server(v0.6)
+
+> 2026-07-23 起草。hayate-mcp の Resource Server(RFC 9728、mcp v0.4)と合流し、
+> 「**MCP サーバーとその認可サーバーを 1 つのアプリにマウントする**」完全形を成立させる。
+> better-auth の OIDC Provider プラグインを参考にするが、OIDC ではなく **OAuth 2.1 AS のみ**
+> (MCP の要件が OAuth であって OIDC ではないため)。
+
+### 19.1 なぜ / 位置づけ
+
+- MCP Authorization 仕様(2025-06-18 以降)はクライアントに OAuth 2.1 + PKCE を要求する。
+  RS 側(Bearer 検証 + Protected Resource Metadata)は hayate-mcp v0.4 で出荷済みだが、
+  トークンを**発行する側**が Python エコシステムに存在しない(Authlib は材料、Keycloak は別サーバー)。
+- hayate-auth はユーザー・セッション・consent の持ち主なので、AS の自然な置き場。
+  `Auth.verify_oauth_token` を `hayate_mcp.Authorization(verify_token=...)` に注入すれば
+  RS と AS が同一プロセスで完結し、introspection も JWKS も要らない(§19.5)。
+- MCP クライアント(Claude Code / MCP Inspector / VS Code)は **DCR で自己登録**してくる。
+  事前登録の管理画面が要らないのは hosted UI を持たない本パッケージと相性が良い。
+
+### 19.2 規範とする標準
+
+| 機能 | 標準 |
+|---|---|
+| 認可コード + PKCE | OAuth 2.1 draft / RFC 6749 / RFC 7636(**S256 のみ**) |
+| AS メタデータ | RFC 8414(`/.well-known/oauth-authorization-server`) |
+| 動的クライアント登録 | RFC 7591(open registration) |
+| Resource Indicators | RFC 8707(`resource` パラメータ、MCP 2025-06-18+ が要求) |
+| セキュリティ BCP | RFC 9700(code 単回使用、refresh rotation + 再利用検知、exact redirect) |
+| loopback リダイレクト | RFC 8252 §7.3(ポート可変。MCP クライアントの実態) |
+
+### 19.3 設計決定
+
+1. **トークンは opaque + ハッシュ保存**(セッション §6 / API キーと同じ規律)。
+   - 理由: RS が同一アプリなので自己完結の検証で足り、即時失効できる。JWT の
+     鍵管理・失効不能問題を持ち込まない。コア JWT 不使用の決定(§2)とも一貫。
+   - 却下: JWT access token — 分離 RS への配布が要件になったときに `[jwt]` extra で再考。
+2. **consent / login の UI はアプリ委譲**(better-auth の loginPage / consentPage と同型)。
+   - `/oauth2/authorize` は未ログインなら `login_url`、未同意なら `consent_url` へ 302。
+     進行中の authorize リクエストは **HMAC 署名 cookie**(oauth.py の state cookie と
+     同じ仕組み、DB レス・isolate 揮発耐性)で運ぶ。
+   - consent の承認は `POST /oauth2/consent {accept: bool}` → `{redirect_uri}` JSON を返し
+     アプリの JS が遷移する(better-auth と同じ)。同意は `oauth_consent` に永続化し、
+     既同意 + 要求 scope ⊆ 許可済み scope なら consent をスキップする。
+3. **issuer は origin のみ(path なし)** — documented subset。
+   - RFC 8414 の path-insertion 形(issuer にパスがある場合の well-known 合成)を
+     実装しない代わりに、`/.well-known/oauth-authorization-server` 1 本で済む。
+     `auth.register(app)` がこのルートを追加登録し、`Auth.fetch` が base_path 外で応答する。
+4. **スキーマ 4 テーブル追加**(所有モデル §4 に加える):
+   `oauth_client`(client_secret_hash は public client で NULL)/
+   `oauth_code`(code_hash、code_challenge 必須、used フラグ + family_id)/
+   `oauth_token`(access/refresh 両ハッシュ、family_id、revoked)/
+   `oauth_consent`(user × client の許可 scope、UNIQUE)。
+5. **エンドポイント**(パスは better-auth の OIDC Provider に揃える):
+
+   | メソッド / パス | 機能 |
+   |---|---|
+   | GET `/.well-known/oauth-authorization-server`(ルート) | RFC 8414 メタデータ |
+   | GET `{base}/oauth2/authorize` | 認可(セッション必須、302 三分岐) |
+   | POST `{base}/oauth2/consent` | 同意の確定(セッション + CSRF) |
+   | POST `{base}/oauth2/token` | code / refresh_token グラント(form-encoded) |
+   | POST `{base}/oauth2/register` | DCR(認証なし = open) |
+
+6. **公開 API**: `AuthorizationServer`(設定 dataclass: issuer / login_url / consent_url /
+   scopes_supported / 各 TTL)を `Auth(authorization_server=...)` に渡す。
+   検証は `Auth.verify_oauth_token(token, resource=None)`。`resource` を渡すと
+   RFC 8707 の audience 制約を強制する(mcp 注入用には
+   `auth.oauth_token_verifier(resource=...)` が束縛済み callable を返す)。
+7. **grant は authorization_code + refresh_token のみ**。response_type は `code` のみ。
+
+### 19.4 セキュリティ決定(攻撃リグレッションで固定するもの)
+
+- **PKCE は全クライアント必須・S256 のみ**(OAuth 2.1 / MCP)。plain は `invalid_request`。
+- **redirect_uri は登録値との完全一致**。例外は RFC 8252 §7.3 の loopback
+  (`http://localhost` / `http://127.0.0.1` / `http://[::1]`)のポート番号のみ可変。
+  DCR で `http://`(非 loopback)は登録自体を拒否。
+- **認可コードは単回使用・既定 5 分**。使用済み code の再提示は、その code が発行した
+  トークン **family を全失効**させてから `invalid_grant`(RFC 9700 §4.2 の防御)。
+- **refresh token は rotation 必須**。交換ごとに新 family 行を発行し旧行を revoked に。
+  revoked 行への refresh 再提示 = 盗難の証拠として **family 全滅**(RFC 9700 §4.14)。
+- code / access / refresh / client_secret はすべて `secrets.token_urlsafe` +
+  **DB には SHA-256 のみ**。client_secret の照合は `hmac.compare_digest`。
+- token / register エンドポイントは cookie 非依存なので CSRF 対象外(既存 csrf.py の
+  非ブラウザ通過がそのまま正しい)。consent は cookie 依存なので既存 CSRF 検査が守る。
+- `resource` は authorize → code → token → 検証までキャリーし、`verify_oauth_token`
+  の resource 指定と不一致なら None(混同トークンで別 RS を叩けない)。
+  複数 `resource` パラメータは `invalid_target`(単一のみ対応 — documented subset)。
+
+### 19.5 却下した代替案
+
+| 却下案 | 理由 |
+|---|---|
+| JWT access token + JWKS | RS 同居では不要な鍵管理を持ち込む。失効不能。§6 と同じ判断 |
+| Token Introspection(RFC 7662) | 分離 RS の証拠が出てから。同居 RS は `verify_oauth_token` 直結で足りる |
+| Token Revocation(RFC 7009) | 同上(実装は小さいが、metadata に載せない限りクライアントは叩かない)。証拠駆動で後続 |
+| OIDC Provider(id_token / userinfo) | MCP の要件は OAuth AS。OIDC は署名鍵(RS256)が必須になり stdlib 制約(§17-2)に反する |
+| consent 画面の内蔵 | hosted UI を持たない方針(§15)。better-auth も画面はアプリ委譲 |
+| client_credentials グラント | ユーザー不在のトークンは MCP の主要ユースに無い。証拠駆動 |
+| 事前登録のみ(DCR なし) | MCP クライアントの実態(Inspector / Claude Code)は DCR 前提 |
