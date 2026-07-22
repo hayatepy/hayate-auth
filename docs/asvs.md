@@ -22,7 +22,8 @@ release. Status values: **covered** (implemented + regression-tested),
 | Email address verification | covered | `tests/test_verification.py::test_email_verification_flow` |
 | OAuth 2.1 authorization-code + PKCE (S256, state-bound) | covered | `oauth.py`, `tests/test_oauth.py` |
 | Federated login does not auto-link unverified emails (takeover defense) | covered | `tests/test_oauth.py::test_unverified_email_does_not_hijack_existing_user` |
-| Multi-factor (TOTP) | planned (v0.4 plugin) | |
+| Multi-factor authentication (TOTP, RFC 6238) | covered | `totp.py`, `two_factor.py`, `tests/test_totp.py` |
+| Password alone cannot complete sign-in when 2FA is on | covered | `tests/test_totp.py::test_password_alone_never_yields_a_session_with_2fa` |
 
 ## V7 — Session Management
 
@@ -41,4 +42,4 @@ release. Status values: **covered** (implemented + regression-tested),
 | Open-redirect defense on OAuth callback_url | covered | `oauth.py::_redirect_allowed`, `tests/test_oauth.py::test_open_redirect_callback_url_is_rejected` |
 | Idle/sliding timeout, active-session listing, revoke-others | planned (v0.3+) | |
 
-**Ratchet: 23 covered** (raise-only; update this line with every release).
+**Ratchet: 25 covered** (raise-only; update this line with every release).

@@ -4,11 +4,12 @@ Standards-first authentication for [hayate](https://github.com/hayatepy/hayate) 
 a mountable, better-auth-style auth handler built on the WHATWG Request/Response
 model.
 
-> **Status: alpha (0.3.x).** Email+password, sessions, CSRF, email
-> verification, password reset, and **OAuth 2.1 + PKCE** (Google / GitHub) are
-> implemented and attack-regression-tested; a `generate` CLI and a Cloudflare
-> D1 adapter ship too. Not yet security-audited — see [SECURITY.md](SECURITY.md).
-> The internal design memo (Japanese) lives in [DESIGN.md](DESIGN.md).
+> **Status: alpha (0.4.x).** Email+password, sessions, CSRF, email
+> verification, password reset, **OAuth 2.1 + PKCE** (Google / GitHub), and
+> **TOTP two-factor** are implemented and attack-regression-tested; a `generate`
+> CLI and a Cloudflare D1 adapter ship too. Not yet security-audited — see
+> [SECURITY.md](SECURITY.md). The internal design memo (Japanese) lives in
+> [DESIGN.md](DESIGN.md).
 
 ```python
 import os
@@ -44,6 +45,13 @@ see [examples/todo](examples/todo).
 | POST `/forget-password` → `/reset-password` | Reset flow via a one-shot hashed token |
 | GET `/verify-email` | Confirm an email with a one-shot token |
 | POST `/sign-in/social` → GET `/callback/:provider` | OAuth 2.1 + PKCE (Google / GitHub) |
+| POST `/two-factor/enable` · `/verify` · `/disable` | TOTP (RFC 6238) enrollment |
+| POST `/sign-in/two-factor` | Second step when 2FA is on |
+
+With TOTP enabled, `/sign-in/email` returns `{"two_factor_required": true}` plus
+a short-lived signed challenge cookie instead of a session; the client then
+posts the authenticator code to `/sign-in/two-factor` to get the session — so a
+stolen password alone never signs in.
 
 Email delivery is your callback (`send_reset_password` / `send_verification_email`);
 the core mints and verifies tokens but never builds URLs or sends mail. Generate

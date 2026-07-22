@@ -142,6 +142,13 @@ async def sign_in_email(auth: Auth, request: Request) -> Response:
     if not await auth.crypto.verify_password(password, stored):
         return problem(401, title=_GENERIC_SIGNIN_FAILURE)
 
+    from .two_factor import enabled_row, issue_challenge
+
+    if await enabled_row(auth, user_row["id"]) is not None:
+        # Password is correct but 2FA is on: hand back a challenge, not a
+        # session. The second step (/sign-in/two-factor) needs the TOTP code.
+        return issue_challenge(auth, request, user_row["id"])
+
     return await _issue_session(auth, request, user_row)
 
 
@@ -229,10 +236,15 @@ async def get_session(auth: Auth, request: Request) -> Response:
     return _json_response({"session": record, "user": user})
 
 
-def _sign_in_social(auth: Auth, request: Request) -> Any:
-    from .oauth import sign_in_social
+def _lazy(module: str, name: str):
+    """Route entry that imports its handler on first call (avoids import cycles)."""
+    import importlib
 
-    return sign_in_social(auth, request)
+    def entry(auth: Auth, request: Request) -> Any:
+        handler = getattr(importlib.import_module(f".{module}", __package__), name)
+        return handler(auth, request)
+
+    return entry
 
 
 ROUTES = {
@@ -243,5 +255,9 @@ ROUTES = {
     ("POST", "/forget-password"): forget_password,
     ("POST", "/reset-password"): reset_password,
     ("GET", "/verify-email"): verify_email,
-    ("POST", "/sign-in/social"): _sign_in_social,
+    ("POST", "/sign-in/social"): _lazy("oauth", "sign_in_social"),
+    ("POST", "/sign-in/two-factor"): _lazy("two_factor", "sign_in"),
+    ("POST", "/two-factor/enable"): _lazy("two_factor", "enable"),
+    ("POST", "/two-factor/verify"): _lazy("two_factor", "verify_enrollment"),
+    ("POST", "/two-factor/disable"): _lazy("two_factor", "disable"),
 }

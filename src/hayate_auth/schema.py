@@ -31,6 +31,7 @@ MODELS: dict[str, tuple[str, ...]] = {
         "updated_at",
     ),
     "verification": ("id", "identifier", "value_hash", "expires_at", "created_at"),
+    "two_factor": ("id", "user_id", "secret", "enabled", "created_at", "updated_at"),
 }
 
 SQLITE_SCHEMA = """\
@@ -73,6 +74,14 @@ CREATE TABLE IF NOT EXISTS "verification" (
   value_hash TEXT NOT NULL,
   expires_at TEXT NOT NULL,
   created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS "two_factor" (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL UNIQUE REFERENCES "user"(id) ON DELETE CASCADE,
+  secret TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
 """
 

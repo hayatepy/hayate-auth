@@ -1,5 +1,6 @@
 """hayate-auth: authentication for hayate as a pure fetch handler."""
 
+from . import totp
 from .adapter import Adapter, Where
 from .auth import Auth
 from .crypto import (
@@ -11,7 +12,7 @@ from .crypto import (
 )
 from .oauth import OAuthProvider, github, google
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "Adapter",
@@ -26,4 +27,5 @@ __all__ = [
     "default_backend",
     "github",
     "google",
+    "totp",
 ]

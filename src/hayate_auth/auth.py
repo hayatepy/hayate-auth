@@ -31,6 +31,7 @@ class Auth:
         send_verification_email: Any | None = None,
         providers: list[Any] | tuple[Any, ...] = (),
         http_backend: Any | None = None,
+        totp_issuer: str = "hayate-auth",
     ) -> None:
         if not secret:
             raise ValueError("secret must be a non-empty string")
@@ -52,6 +53,7 @@ class Auth:
         # backend override (tests inject a fake; None = runtime default).
         self.providers = {provider.id: provider for provider in providers}
         self.http_backend = http_backend
+        self.totp_issuer = totp_issuer
         self._dummy: str | None = None
 
     # -- the core ----------------------------------------------------------------------

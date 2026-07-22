@@ -368,8 +368,8 @@ hayate-auth/
 | ~~**v0.1**~~ | **完了(2026-07-22)**: Adapter + sqlite3 / セッション / email+password / CSRF / `require_session` | ✅ ログイン付き TODO(examples/todo)が **uvicorn とローカル workerd で無変更動作を実測**(workerd 側は wasm scrypt + sqlite + 401 ガードまで確認。vendor は Windows 回避の手動、アプリコードは無変更)。✅ ASVS V6/V7 表を docs/asvs.md に初回公開(17 covered)。テスト 41 + example 2。本番 deploy(CPU 課金実測)は公開判断時に実施 |
 | v0.2 | **出荷(2026-07-23)**: verification(メール検証 / リセット)+ generate CLI + D1 adapter | メール検証 / リセットの攻撃リグレッション(単回・期限・トークン混同・全セッション失効)緑。ASVS 17→20 |
 | v0.3 | **出荷(2026-07-23)**: OAuth 2.1 authorization-code + PKCE(Google / GitHub、S256)。state+verifier は HMAC 署名 cookie(DB レス、isolate 揮発耐性)。id_token は OIDC Core §3.1.3.7 で署名検証省略(§17-2)。HTTP は hayate-fetch backend 注入 | モックプロバイダで全フロー緑(PKCE challenge / state 照合 / アカウント再利用 / 未検証メール非リンク / open-redirect 拒否)。ASVS 20→23。9 テスト追加 |
-| v0.3 | プラグイン機構 + TOTP + magic link | コア外のプラグインが書ける |
-| v0.4 | passkey(`[passkey]` extra) | — |
+| v0.4 | **出荷(2026-07-23)**: TOTP 二要素(RFC 6238、stdlib hmac + base32)。two_factor テーブル / enable・verify・disable / **二段サインイン**(パスワード OK でも 2FA 有効時はセッション不発行 → HMAC 署名チャレンジ cookie → TOTP コードで交換) | RFC 6238 Appendix B ベクタ一致。攻撃面: パスワード単独ではセッション不成立・チャレンジ必須・誤コード拒否。ASVS 23→25。13 テスト。magic link と正式プラグイン API 抽出(§11)は後続 |
+| v0.5 | passkey(`[passkey]` extra)/ magic link / プラグイン API 抽出 | — |
 | v1.0 | API 凍結 | 本体 v1.0 より後。基準は本体に倣い外部利用の証拠を要件化 |
 
 ### 決定済み(2026-07-22)

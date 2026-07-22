@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "hayate-auth"
-version = "0.3.0"
+version = "0.4.0"
 description = "Authentication for hayate as a pure fetch(Request) -> Response handler: email+password, sessions, CSRF"
 readme = "README.md"
 requires-python = ">=3.12"
