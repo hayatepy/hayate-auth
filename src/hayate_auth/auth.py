@@ -26,6 +26,9 @@ class Auth:
         base_path: str = "/api/auth",
         trusted_origins: tuple[str, ...] | list[str] = (),
         session_ttl: timedelta = timedelta(days=7),
+        verification_ttl: timedelta = timedelta(hours=1),
+        send_reset_password: Any | None = None,
+        send_verification_email: Any | None = None,
     ) -> None:
         if not secret:
             raise ValueError("secret must be a non-empty string")
@@ -37,6 +40,12 @@ class Auth:
         self.base_path = base_path.rstrip("/")
         self.trusted_origins = frozenset(trusted_origins)
         self.session_ttl = session_ttl
+        self.verification_ttl = verification_ttl
+        # App-owned delivery callbacks: async (public_user, token) -> None.
+        # The app builds the link and sends the mail; the core only mints
+        # and checks tokens (DESIGN §10).
+        self.send_reset_password = send_reset_password
+        self.send_verification_email = send_verification_email
         self._dummy: str | None = None
 
     # -- the core ----------------------------------------------------------------------

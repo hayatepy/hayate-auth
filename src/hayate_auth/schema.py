@@ -75,3 +75,10 @@ CREATE TABLE IF NOT EXISTS "verification" (
   created_at TEXT NOT NULL
 );
 """
+
+# Same shape for PostgreSQL. Timestamps stay ISO-8601 TEXT and booleans stay
+# 0/1 integers on purpose: adapters exchange plain strings/ints, so one wire
+# format works across sqlite, D1, and postgres without per-dialect casting.
+POSTGRES_SCHEMA = SQLITE_SCHEMA
+
+DIALECTS = {"sqlite": SQLITE_SCHEMA, "postgres": POSTGRES_SCHEMA, "d1": SQLITE_SCHEMA}

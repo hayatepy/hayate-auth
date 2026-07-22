@@ -105,6 +105,13 @@ async def sign_up_email(auth: Auth, request: Request) -> Response:
             "updated_at": stamp,
         },
     )
+    if auth.send_verification_email is not None:
+        from .verification import create_verification
+
+        token = await create_verification(
+            auth.adapter, f"verify:{user_row['id']}", ttl=auth.verification_ttl
+        )
+        await auth.send_verification_email(public_user(user_row), token)
     return await _issue_session(auth, request, user_row)
 
 
@@ -144,6 +151,76 @@ async def sign_out(auth: Auth, request: Request) -> Response:
     return _json_response({"success": True}, cookies=[cookie])
 
 
+async def forget_password(auth: Auth, request: Request) -> Response:
+    """Start a reset. The response never reveals whether the email exists."""
+    from .verification import create_verification
+
+    if auth.send_reset_password is None:
+        return problem(501, title="Password reset is not configured")
+    data = await _read_json_object(request)
+    if isinstance(data, Response):
+        return data
+    email = data.get("email")
+    if not isinstance(email, str):
+        return problem(400, title="Email is required")
+
+    user_row = await auth.adapter.find_one("user", [Where("email", normalize_email(email))])
+    if user_row is not None:
+        token = await create_verification(
+            auth.adapter, f"reset:{user_row['id']}", ttl=auth.verification_ttl
+        )
+        await auth.send_reset_password(public_user(user_row), token)
+    return _json_response({"success": True})
+
+
+async def reset_password(auth: Auth, request: Request) -> Response:
+    from .verification import consume_verification
+
+    data = await _read_json_object(request)
+    if isinstance(data, Response):
+        return data
+    token = data.get("token")
+    if not isinstance(token, str) or not token:
+        return problem(400, title="Token is required")
+    if (error := password_error(data.get("password"))) is not None:
+        return problem(400, title=error)
+
+    row = await consume_verification(auth.adapter, token, prefix="reset:")
+    if row is None:
+        return problem(400, title="Invalid or expired token")
+    user_id = row["identifier"].removeprefix("reset:")
+
+    await auth.adapter.update(
+        "account",
+        [Where("user_id", user_id), Where("provider_id", "credential")],
+        {
+            "password_hash": await auth.crypto.hash_password(data["password"]),
+            "updated_at": sessions.isoformat(sessions.now()),
+        },
+    )
+    # A reset invalidates every existing session for the user (ASVS V7).
+    await auth.adapter.delete("session", [Where("user_id", user_id)])
+    return _json_response({"success": True})
+
+
+async def verify_email(auth: Auth, request: Request) -> Response:
+    from .verification import consume_verification
+
+    token = request.url.search_params.get("token")
+    if not token:
+        return problem(400, title="Token is required")
+    row = await consume_verification(auth.adapter, token, prefix="verify:")
+    if row is None:
+        return problem(400, title="Invalid or expired token")
+    user_id = row["identifier"].removeprefix("verify:")
+    await auth.adapter.update(
+        "user",
+        [Where("id", user_id)],
+        {"email_verified": 1, "updated_at": sessions.isoformat(sessions.now())},
+    )
+    return _json_response({"success": True})
+
+
 async def get_session(auth: Auth, request: Request) -> Response:
     resolved = await auth.get_session(request)
     if resolved is None:
@@ -157,4 +234,7 @@ ROUTES = {
     ("POST", "/sign-in/email"): sign_in_email,
     ("POST", "/sign-out"): sign_out,
     ("GET", "/get-session"): get_session,
+    ("POST", "/forget-password"): forget_password,
+    ("POST", "/reset-password"): reset_password,
+    ("GET", "/verify-email"): verify_email,
 }

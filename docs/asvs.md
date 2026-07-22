@@ -18,8 +18,8 @@ release. Status values: **covered** (implemented + regression-tested),
 | Generic failure message for bad credentials (no user enumeration) | covered | `tests/test_email_flow.py::test_wrong_password_and_unknown_user_are_identical_401s` |
 | Response-timing equalization for unknown users (dummy KDF burn) | covered | `tests/test_attacks.py::test_unknown_user_still_burns_a_kdf` |
 | Anti-automation / brute-force throttling | external | rate limiting is the hayate middleware / infrastructure's mandate (DESIGN §9); required-setup documented in README |
-| Password change / reset flows | planned (v0.2) | verification tokens land with email flows |
-| Email address verification | planned (v0.2) | |
+| Password change / reset flows | covered | one-shot hashed tokens, `tests/test_verification.py` |
+| Email address verification | covered | `tests/test_verification.py::test_email_verification_flow` |
 | Multi-factor (TOTP) | planned (v0.3 plugin) | |
 
 ## V7 — Session Management
@@ -33,8 +33,9 @@ release. Status values: **covered** (implemented + regression-tested),
 | SameSite attribute set (Lax) | covered | `session.py` |
 | New session token on authentication (fixation defense) | covered | `tests/test_attacks.py::test_sign_in_rotates_the_session_token` |
 | Logout invalidates the session server-side | covered | `tests/test_attacks.py::test_revoked_token_cannot_be_replayed` |
+| Password reset revokes every session for the user | covered | `tests/test_verification.py::test_reset_revokes_every_session` |
 | Absolute session expiry enforced and expired rows purged | covered | `tests/test_attacks.py::test_expired_session_is_rejected_and_deleted` |
 | CSRF defense for cookie-carried state changes (SameSite + Origin + Fetch Metadata) | covered | `csrf.py`, `tests/test_csrf.py` |
 | Idle/sliding timeout, active-session listing, revoke-others | planned (v0.2+) | |
 
-**Ratchet: 17 covered** (raise-only; update this line with every release).
+**Ratchet: 20 covered** (raise-only; update this line with every release).
