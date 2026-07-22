@@ -345,17 +345,23 @@ hayate-auth/
    **解決(2026-07-22 spike)**: 前提が崩れた — 現行 workerd の Pyodide には
    `hashlib.scrypt` があり CPython と同一ハッシュを verify できる(research/kdf.md)。
    固定設定は不要。既定は全ランタイム scrypt 統一(§8)。
-4. **実装本格化のタイミング**: 本体 v1.0(API 凍結)前にドッグフーディングとして
-   v0.1 を作るか、凍結後にするか。
+4. ~~**実装本格化のタイミング**: 本体 v1.0(API 凍結)前にドッグフーディングとして
+   v0.1 を作るか、凍結後にするか。~~ **解決(2026-07-22)**: 凍結前に作った。
+   本体 API の欠陥を v1.0 前に炙り出すという目的どおりの成果は下記 5。
 5. hayate 本体への要望が出た場合の扱い(例: サブアプリ mount API)。
    現仮説: catch-all `app.on` で足りるため不要。
+   **v0.1 実装の実測(2026-07-22)**: ルーティング・ミドルウェア・Response 構築は
+   公開 API だけで足りた(catch-all 仮説は実証)。唯一の要望候補:
+   `hayate.cookies` の `parse_cookies` / `serialize_set_cookie` を import して
+   使ったが、これは本体の**非公開モジュール**(`__all__` 外)。本体 v1.0 凍結前に
+   公開 API へ昇格するか判断を仰ぐ(凍結対象監査に載らないままだと将来壊れうる)。
 
 ## 18. マイルストーン
 
 | 版 | 内容 | 受け入れ基準 |
 |---|---|---|
 | ~~**spike**~~ | **完了(2026-07-22)**: WebCrypto PBKDF2 に加え wasm hashlib.scrypt / pbkdf2_hmac を実測 | ✅ research/kdf.md に全数値。§17-3 解決(全ランタイム scrypt 統一)。本番 CPU 課金の確認だけ v0.1 の deploy 検証に持ち越し |
-| **v0.1** | Adapter protocol + sqlite3 / セッション / email+password / CSRF / `require_session` | **ログイン付き TODO アプリが uvicorn と workerd で無変更動作**。ASVS V6/V7 対応表を初回公開 |
+| ~~**v0.1**~~ | **完了(2026-07-22)**: Adapter + sqlite3 / セッション / email+password / CSRF / `require_session` | ✅ ログイン付き TODO(examples/todo)が **uvicorn とローカル workerd で無変更動作を実測**(workerd 側は wasm scrypt + sqlite + 401 ガードまで確認。vendor は Windows 回避の手動、アプリコードは無変更)。✅ ASVS V6/V7 表を docs/asvs.md に初回公開(17 covered)。テスト 41 + example 2。本番 deploy(CPU 課金実測)は公開判断時に実施 |
 | v0.2 | verification(メール検証 / リセット)+ OAuth PKCE(Google / GitHub)+ generate CLI | social ログインが両ランタイムで動く |
 | v0.3 | プラグイン機構 + TOTP + magic link | コア外のプラグインが書ける |
 | v0.4 | passkey(`[passkey]` extra) | — |

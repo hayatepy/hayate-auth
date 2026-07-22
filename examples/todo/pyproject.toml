@@ -1,0 +1,21 @@
+[project]
+name = "hayate-auth-todo-example"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["hayate>=0.6.0", "hayate-auth"]
+
+[tool.uv.sources]
+hayate-auth = { path = "../..", editable = true }
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.25",
+  "uvicorn>=0.30",
+  "workers-py",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
