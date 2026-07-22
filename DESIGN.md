@@ -240,10 +240,13 @@ class CryptoBackend(Protocol):
   (CPython ~0.6 s / workerd ~1.0 s、同一ハッシュを相互 verify 可能)。
   - CPython: `asyncio.to_thread` でラップ。Workers: 直接呼び出し(リクエスト分離)。
   - `hashlib.scrypt` が無い環境(古い compatibility_date の Pyodide)は
-    WebCrypto `deriveBits` PBKDF2-HMAC-SHA256(OWASP 600k、~0.6 s)へ自動フォールバック。
-    速度優先での明示選択も可。
-  - 無料プラン(CPU 10 ms)ではどの KDF も成立しない。認証エンドポイントは
-    有料プラン前提であることを docs に明記する。
+    WebCrypto `deriveBits` PBKDF2-HMAC-SHA256 へ自動フォールバック。
+    **ただし本番実測(2026-07-23)で Cloudflare の WebCrypto は反復 100k が上限と判明** —
+    フォールバックは「互換経路(OWASP 600k 未達)」であり、OWASP 水準は hashlib 経路のみ。
+  - 無料プランの CPU limit ではどの KDF も成立しない(本番実測: 0.5–2 s が確率的に
+    exceededCpu)。認証エンドポイントは有料プラン(標準 30 s CPU)前提と docs に明記する。
+  - 本番の isolate 揮発により in-memory ストレージは実用不可 — **D1 adapter は v0.2 スコープ**
+    (research/kdf.md 本番実測 5)。
 - 保存形式は PHC string format(`$scrypt$…`)。アルゴリズム識別子付きなので
   バックエンド混在でも verify 先を選べる(相互運用の残課題は §17-3)。
 - **却下**: argon2-cffi 必須 — C 拡張で Workers 不可、ゼロ依存崩壊。`[argon2]` extra の余地は残す。
@@ -333,9 +336,10 @@ hayate-auth/
 
 ## 17. 未決事項(要判断)
 
-1. **OAuth トークン交換の HTTP クライアント**(stdlib に async client がない):
-   (a) `HttpClient` protocol 注入 — 既定 CPython=urllib+to_thread / Workers=JS fetch、
-   (b) `[oauth]` extra で httpx 依存。仮説は (a)(ゼロ依存維持、Workers で自然)。v0.2 設計時に決定。
+1. ~~**OAuth トークン交換の HTTP クライアント**~~ **解決(2026-07-23)**: 案 (a) を採用し、
+   その実装置き場を **hayate-fetch**(WHATWG fetch 表面 + FetchBackend protocol、
+   CPython=urllib+to_thread / Workers=JS fetch)として切り出す(hayate-fetch DESIGN 参照)。
+   auth v0.2 は hayate-fetch に依存する(mcp クライアント等の将来消費者と実装を共有するため)。
 2. **OIDC id_token 検証**: RS256/ES256 は stdlib で不可。有力筋は OIDC Core
    §3.1.3.7 の規定 —「code flow で Token Endpoint から TLS 直接受信した場合、
    署名検証の代わりに TLS サーバー検証を用いてよい」— に依拠して

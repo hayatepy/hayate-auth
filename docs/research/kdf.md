@@ -49,6 +49,38 @@
 - 列挙攻撃対策のダミー KDF 実行(§9)は Workers 上で ~1 s のコストになる。
   タイミング均質化の実装はこの数値を前提に設計する。
 
+## 本番実測(2026-07-23 追記 — Cloudflare 実機、deploy → 実測 → worker 削除済み)
+
+TODO example と spike worker を `pywrangler deploy` し、`wrangler tail --format json` の
+`cpuTime` を記録した。
+
+| 操作 | 結果 | CPU 時間 |
+|---|---|---|
+| sign-up(wasm scrypt N=2^17) | 200 ok | 1325 ms |
+| sign-in ×3(同上) | **503 exceededCpu / 401 ok / 503 exceededCpu** | 2020 / 1597 / 513 ms |
+| wasm `hashlib.pbkdf2` 600k(spike) | 200 ok | 854 ms |
+| wasm `hashlib.scrypt` N=2^17(spike) | 200 ok | 684 ms |
+| WebCrypto PBKDF2 **600k** | **500(例外)** | — |
+| WebCrypto PBKDF2 **100k** | 200 ok | 458 ms |
+
+### 本番でだけ判ること(5 点)
+
+1. **このアカウント(Free プラン相当の CPU limit)では OWASP 級 KDF は確率的に殺される**
+   (1.3 s が通り 0.5 s が exceededCpu になる soft-limit 挙動)。「認証エンドポイントは
+   有料プラン前提」という docs の注意書きが実測で裏付けられた。有料プラン
+   (Standard、CPU 30 s)なら wasm scrypt ~0.7–2 s は余裕 — **既定 scrypt 統一の決定は不変**。
+2. **Cloudflare の WebCrypto は PBKDF2 反復数 100k が上限**(600k は deriveBits が例外)。
+   → WebCrypto フォールバックは OWASP 600k に届かない。DESIGN §8 のフォールバックの
+   位置づけを「古い Pyodide 向けの互換経路(100k 上限、セキュリティ水準は劣後)」に修正。
+   OWASP 水準の KDF は hashlib 経路(現行 Pyodide)のみ。
+3. **WebCrypto のネイティブ実行も CPU 課金される**(100k で 458 ms)— 「ネイティブだから
+   課金が軽い」仮説は否定。
+4. **本番はタイマー完全凍結**(`perf_counter` / `Date.now` とも CPU 中は 0)。
+   ローカル workerd はタイマーが進むため、時間実測はローカル、課金実測は本番 tail と役割分担。
+5. **in-memory 状態は isolate 間で共有されない**(sign-up 直後の cookie が別 isolate で
+   401 = user 不在 → ダミー KDF 発火まで観測)。**D1 adapter が本番の必須条件**
+   (auth DESIGN §5 の同梱 2 つ目。v0.2 スコープに昇格)。
+
 ## 再現手順と環境の罠(Windows)
 
 spike の再現は `spike/kdf-workers/` の README 冒頭コメント参照。**このマシン(Windows 11 +
