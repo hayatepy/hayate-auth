@@ -1,0 +1,4 @@
+.venv/
+.venv-workers/
+python_modules/
+__pycache__/

@@ -1,0 +1,8 @@
+[project]
+name = "hayate-auth-kdf-spike"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = ["hayate>=0.6.0"]
+
+[dependency-groups]
+dev = ["workers-py"]

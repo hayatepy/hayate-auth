@@ -220,9 +220,11 @@ Python 側 API(表記は PEP 8):
 
 ## 8. CryptoBackend protocol(Workers 制約が設計を決める)
 
-**背景(2026-07-22 検証済み)**: Pyodide は OpenSSL 依存の hashlib 関数を提供しない。
-つまり Workers 上に `hashlib.scrypt` も `hashlib.pbkdf2_hmac` も存在しない。
-`hmac` + sha2(内蔵 C 実装)は動く(TOTP・HMAC 署名は無事)。
+**背景(2026-07-22 spike で更新 — research/kdf.md)**: 当初調査の「Pyodide は OpenSSL 依存の
+hashlib 関数を提供しない」は現行 workerd(Pyodide 3.13.2)では**誤り**と実測で判明。
+`hashlib.scrypt` / `hashlib.pbkdf2_hmac` とも存在・動作し、OWASP パラメータの scrypt
+(N=2^17, 64 MiB)が ~1.0 s で完走、RFC 7914 §11 ベクタが CPython / wasm hashlib /
+WebCrypto の 3 実装で一致した。`hmac` + sha2 も従来どおり動く(TOTP・HMAC 署名は無事)。
 
 ```python
 class CryptoBackend(Protocol):
@@ -233,10 +235,15 @@ class CryptoBackend(Protocol):
 - **async である理由**: Workers の WebCrypto(`js.crypto.subtle`)は Promise ベース。
   CPython 実装も KDF は CPU 数十 ms かかるため `asyncio.to_thread` でラップし、
   イベントループを塞がない。
-- **既定バックエンド**(実行環境で自動選択):
-  - CPython: `hashlib.scrypt`(OWASP 推奨 N=2^17, r=8, p=1, 64 MiB)
-  - Workers: WebCrypto `deriveBits` PBKDF2-HMAC-SHA256(OWASP 600k 反復)。
-    **CPU limit 内に収まるかは最初の spike で実測**(§18)
+- **既定バックエンド(2026-07-22 spike で決定): 全ランタイムで `hashlib.scrypt`
+  (OWASP 推奨 N=2^17, r=8, p=1, 64 MiB)に統一**。実測は research/kdf.md
+  (CPython ~0.6 s / workerd ~1.0 s、同一ハッシュを相互 verify 可能)。
+  - CPython: `asyncio.to_thread` でラップ。Workers: 直接呼び出し(リクエスト分離)。
+  - `hashlib.scrypt` が無い環境(古い compatibility_date の Pyodide)は
+    WebCrypto `deriveBits` PBKDF2-HMAC-SHA256(OWASP 600k、~0.6 s)へ自動フォールバック。
+    速度優先での明示選択も可。
+  - 無料プラン(CPU 10 ms)ではどの KDF も成立しない。認証エンドポイントは
+    有料プラン前提であることを docs に明記する。
 - 保存形式は PHC string format(`$scrypt$…`)。アルゴリズム識別子付きなので
   バックエンド混在でも verify 先を選べる(相互運用の残課題は §17-3)。
 - **却下**: argon2-cffi 必須 — C 拡張で Workers 不可、ゼロ依存崩壊。`[argon2]` extra の余地は残す。
@@ -333,8 +340,11 @@ hayate-auth/
    §3.1.3.7 の規定 —「code flow で Token Endpoint から TLS 直接受信した場合、
    署名検証の代わりに TLS サーバー検証を用いてよい」— に依拠して
    **code flow 限定 + 署名検証省略**でゼロ依存を貫く案。JWKS 検証は `[oidc]` extra に。
-3. **デュアルランタイムの KDF 相互運用**: scrypt ハッシュは Workers で verify できない。
-   同一 DB を両ランタイムで使う構成では KDF を PBKDF2 に固定する設定が要るか。
+3. ~~**デュアルランタイムの KDF 相互運用**: scrypt ハッシュは Workers で verify できない。
+   同一 DB を両ランタイムで使う構成では KDF を PBKDF2 に固定する設定が要るか。~~
+   **解決(2026-07-22 spike)**: 前提が崩れた — 現行 workerd の Pyodide には
+   `hashlib.scrypt` があり CPython と同一ハッシュを verify できる(research/kdf.md)。
+   固定設定は不要。既定は全ランタイム scrypt 統一(§8)。
 4. **実装本格化のタイミング**: 本体 v1.0(API 凍結)前にドッグフーディングとして
    v0.1 を作るか、凍結後にするか。
 5. hayate 本体への要望が出た場合の扱い(例: サブアプリ mount API)。
@@ -344,7 +354,7 @@ hayate-auth/
 
 | 版 | 内容 | 受け入れ基準 |
 |---|---|---|
-| **spike** | Workers 上の WebCrypto PBKDF2 実測(反復数と CPU 時間) | research メモに数値を記録し、§17-3 の方針を決める |
+| ~~**spike**~~ | **完了(2026-07-22)**: WebCrypto PBKDF2 に加え wasm hashlib.scrypt / pbkdf2_hmac を実測 | ✅ research/kdf.md に全数値。§17-3 解決(全ランタイム scrypt 統一)。本番 CPU 課金の確認だけ v0.1 の deploy 検証に持ち越し |
 | **v0.1** | Adapter protocol + sqlite3 / セッション / email+password / CSRF / `require_session` | **ログイン付き TODO アプリが uvicorn と workerd で無変更動作**。ASVS V6/V7 対応表を初回公開 |
 | v0.2 | verification(メール検証 / リセット)+ OAuth PKCE(Google / GitHub)+ generate CLI | social ログインが両ランタイムで動く |
 | v0.3 | プラグイン機構 + TOTP + magic link | コア外のプラグインが書ける |
