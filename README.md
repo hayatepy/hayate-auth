@@ -4,10 +4,12 @@ Standards-first authentication for [hayate](https://github.com/hayatepy/hayate) 
 a mountable, better-auth-style auth handler built on the WHATWG Request/Response
 model.
 
-> **Status: alpha (0.1.x).** Email+password, sessions, and CSRF are implemented
-> and attack-regression-tested; email verification and OAuth land in 0.2. Not
-> yet security-audited — see [SECURITY.md](SECURITY.md). The internal design
-> memo (Japanese, per project convention) lives in [DESIGN.md](DESIGN.md).
+> **Status: alpha (0.2.x).** Email+password, sessions, CSRF, email
+> verification, and password reset are implemented and attack-regression-tested;
+> a `generate` CLI and a Cloudflare D1 adapter ship too. OAuth (PKCE) is next,
+> gated on `hayate-fetch` reaching PyPI. Not yet security-audited — see
+> [SECURITY.md](SECURITY.md). The internal design memo (Japanese) lives in
+> [DESIGN.md](DESIGN.md).
 
 ```python
 import os
@@ -32,7 +34,7 @@ async def me(c):
 The same file runs under any ASGI server and on Cloudflare Python Workers —
 see [examples/todo](examples/todo).
 
-## Endpoints (v0.1)
+## Endpoints
 
 | Method / path (under `/api/auth`) | Purpose |
 |---|---|
@@ -40,6 +42,12 @@ see [examples/todo](examples/todo).
 | POST `/sign-in/email` | Verify credentials, start a session |
 | GET `/get-session` | Current `{user, session}` (or nulls) |
 | POST `/sign-out` | Revoke the session server-side |
+| POST `/forget-password` → `/reset-password` | Reset flow via a one-shot hashed token |
+| GET `/verify-email` | Confirm an email with a one-shot token |
+
+Email delivery is your callback (`send_reset_password` / `send_verification_email`);
+the core mints and verifies tokens but never builds URLs or sends mail. Generate
+migration DDL with `python -m hayate_auth generate --dialect sqlite|postgres|d1`.
 
 ## Why
 

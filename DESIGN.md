@@ -366,7 +366,7 @@ hayate-auth/
 |---|---|---|
 | ~~**spike**~~ | **完了(2026-07-22)**: WebCrypto PBKDF2 に加え wasm hashlib.scrypt / pbkdf2_hmac を実測 | ✅ research/kdf.md に全数値。§17-3 解決(全ランタイム scrypt 統一)。本番 CPU 課金の確認だけ v0.1 の deploy 検証に持ち越し |
 | ~~**v0.1**~~ | **完了(2026-07-22)**: Adapter + sqlite3 / セッション / email+password / CSRF / `require_session` | ✅ ログイン付き TODO(examples/todo)が **uvicorn とローカル workerd で無変更動作を実測**(workerd 側は wasm scrypt + sqlite + 401 ガードまで確認。vendor は Windows 回避の手動、アプリコードは無変更)。✅ ASVS V6/V7 表を docs/asvs.md に初回公開(17 covered)。テスト 41 + example 2。本番 deploy(CPU 課金実測)は公開判断時に実施 |
-| v0.2 | verification(メール検証 / リセット)+ OAuth PKCE(Google / GitHub)+ generate CLI | social ログインが両ランタイムで動く |
+| v0.2 | **出荷(2026-07-23)**: verification(メール検証 / リセット)+ generate CLI + D1 adapter。**OAuth PKCE は hayate-fetch の PyPI 公開待ちで 0.2.x に分割** | メール検証 / リセットの攻撃リグレッション(単回・期限・トークン混同・全セッション失効)緑。ASVS 17→20。social は OAuth 実装時 |
 | v0.3 | プラグイン機構 + TOTP + magic link | コア外のプラグインが書ける |
 | v0.4 | passkey(`[passkey]` extra) | — |
 | v1.0 | API 凍結 | 本体 v1.0 より後。基準は本体に倣い外部利用の証拠を要件化 |
