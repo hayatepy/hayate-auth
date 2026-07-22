@@ -119,6 +119,14 @@ class Auth:
             return None
         return public_user(user_row), sessions.public_session(record)
 
+    async def verify_api_key(self, key: str) -> dict[str, Any] | None:
+        """Verify an API key, returning ``{user_id, scopes, key_id, name}`` or
+        None. Drop this straight into hayate-mcp's
+        ``Authorization(verify_token=auth.verify_api_key)``."""
+        from .api_key import verify_key
+
+        return await verify_key(self, key)
+
     # -- internals ---------------------------------------------------------------------
 
     async def _dummy_hash(self) -> str:

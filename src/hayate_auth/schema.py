@@ -32,6 +32,19 @@ MODELS: dict[str, tuple[str, ...]] = {
     ),
     "verification": ("id", "identifier", "value_hash", "expires_at", "created_at"),
     "two_factor": ("id", "user_id", "secret", "enabled", "created_at", "updated_at"),
+    "api_key": (
+        "id",
+        "user_id",
+        "name",
+        "prefix",
+        "key_hash",
+        "scopes",
+        "expires_at",
+        "enabled",
+        "last_used_at",
+        "created_at",
+        "updated_at",
+    ),
 }
 
 SQLITE_SCHEMA = """\
@@ -83,6 +96,20 @@ CREATE TABLE IF NOT EXISTS "two_factor" (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS "api_key" (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  name TEXT,
+  prefix TEXT NOT NULL,
+  key_hash TEXT NOT NULL UNIQUE,
+  scopes TEXT,
+  expires_at TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  last_used_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS api_key_user_id ON "api_key"(user_id);
 """
 
 # Same shape for PostgreSQL. Timestamps stay ISO-8601 TEXT and booleans stay

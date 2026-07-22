@@ -260,4 +260,8 @@ ROUTES = {
     ("POST", "/two-factor/enable"): _lazy("two_factor", "enable"),
     ("POST", "/two-factor/verify"): _lazy("two_factor", "verify_enrollment"),
     ("POST", "/two-factor/disable"): _lazy("two_factor", "disable"),
+    ("POST", "/api-key/create"): _lazy("api_key", "create"),
+    ("POST", "/api-key/verify"): _lazy("api_key", "verify"),
+    ("GET", "/api-key/list"): _lazy("api_key", "list_keys"),
+    ("POST", "/api-key/delete"): _lazy("api_key", "delete"),
 }

@@ -4,12 +4,12 @@ Standards-first authentication for [hayate](https://github.com/hayatepy/hayate) 
 a mountable, better-auth-style auth handler built on the WHATWG Request/Response
 model.
 
-> **Status: alpha (0.4.x).** Email+password, sessions, CSRF, email
-> verification, password reset, **OAuth 2.1 + PKCE** (Google / GitHub), and
-> **TOTP two-factor** are implemented and attack-regression-tested; a `generate`
-> CLI and a Cloudflare D1 adapter ship too. Not yet security-audited — see
-> [SECURITY.md](SECURITY.md). The internal design memo (Japanese) lives in
-> [DESIGN.md](DESIGN.md).
+> **Status: alpha (0.5.x).** Email+password, sessions, CSRF, email
+> verification, password reset, **OAuth 2.1 + PKCE** (Google / GitHub), **TOTP
+> two-factor**, and **API keys** are implemented and attack-regression-tested;
+> a `generate` CLI and a Cloudflare D1 adapter ship too. Not yet
+> security-audited — see [SECURITY.md](SECURITY.md). The internal design memo
+> (Japanese) lives in [DESIGN.md](DESIGN.md).
 
 ```python
 import os
@@ -47,6 +47,20 @@ see [examples/todo](examples/todo).
 | POST `/sign-in/social` → GET `/callback/:provider` | OAuth 2.1 + PKCE (Google / GitHub) |
 | POST `/two-factor/enable` · `/verify` · `/disable` | TOTP (RFC 6238) enrollment |
 | POST `/sign-in/two-factor` | Second step when 2FA is on |
+| POST `/api-key/create` · `/verify` · `/delete` · GET `/api-key/list` | API keys (hashed, scoped, expiring) |
+
+API keys double as the bridge to [hayate-mcp](https://github.com/hayatepy/hayate-mcp):
+`auth.verify_api_key` plugs straight into its OAuth Resource Server, so an API
+key protects an MCP server in one line:
+
+```python
+from hayate_mcp import Authorization, McpMount
+McpMount(server, authorization=Authorization(
+    resource="https://mcp.example.com",
+    authorization_servers=["https://auth.example.com"],
+    verify_token=auth.verify_api_key,
+)).register(app)
+```
 
 With TOTP enabled, `/sign-in/email` returns `{"two_factor_required": true}` plus
 a short-lived signed challenge cookie instead of a session; the client then
