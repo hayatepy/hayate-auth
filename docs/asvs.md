@@ -20,7 +20,9 @@ release. Status values: **covered** (implemented + regression-tested),
 | Anti-automation / brute-force throttling | external | rate limiting is the hayate middleware / infrastructure's mandate (DESIGN §9); required-setup documented in README |
 | Password change / reset flows | covered | one-shot hashed tokens, `tests/test_verification.py` |
 | Email address verification | covered | `tests/test_verification.py::test_email_verification_flow` |
-| Multi-factor (TOTP) | planned (v0.3 plugin) | |
+| OAuth 2.1 authorization-code + PKCE (S256, state-bound) | covered | `oauth.py`, `tests/test_oauth.py` |
+| Federated login does not auto-link unverified emails (takeover defense) | covered | `tests/test_oauth.py::test_unverified_email_does_not_hijack_existing_user` |
+| Multi-factor (TOTP) | planned (v0.4 plugin) | |
 
 ## V7 — Session Management
 
@@ -36,6 +38,7 @@ release. Status values: **covered** (implemented + regression-tested),
 | Password reset revokes every session for the user | covered | `tests/test_verification.py::test_reset_revokes_every_session` |
 | Absolute session expiry enforced and expired rows purged | covered | `tests/test_attacks.py::test_expired_session_is_rejected_and_deleted` |
 | CSRF defense for cookie-carried state changes (SameSite + Origin + Fetch Metadata) | covered | `csrf.py`, `tests/test_csrf.py` |
-| Idle/sliding timeout, active-session listing, revoke-others | planned (v0.2+) | |
+| Open-redirect defense on OAuth callback_url | covered | `oauth.py::_redirect_allowed`, `tests/test_oauth.py::test_open_redirect_callback_url_is_rejected` |
+| Idle/sliding timeout, active-session listing, revoke-others | planned (v0.3+) | |
 
-**Ratchet: 20 covered** (raise-only; update this line with every release).
+**Ratchet: 23 covered** (raise-only; update this line with every release).

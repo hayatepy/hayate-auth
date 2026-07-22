@@ -340,10 +340,10 @@ hayate-auth/
    その実装置き場を **hayate-fetch**(WHATWG fetch 表面 + FetchBackend protocol、
    CPython=urllib+to_thread / Workers=JS fetch)として切り出す(hayate-fetch DESIGN 参照)。
    auth v0.2 は hayate-fetch に依存する(mcp クライアント等の将来消費者と実装を共有するため)。
-2. **OIDC id_token 検証**: RS256/ES256 は stdlib で不可。有力筋は OIDC Core
-   §3.1.3.7 の規定 —「code flow で Token Endpoint から TLS 直接受信した場合、
-   署名検証の代わりに TLS サーバー検証を用いてよい」— に依拠して
-   **code flow 限定 + 署名検証省略**でゼロ依存を貫く案。JWKS 検証は `[oidc]` extra に。
+2. ~~**OIDC id_token 検証**~~ **決定・実装(2026-07-23、v0.3)**: OIDC Core §3.1.3.7
+   に依拠し **code flow 限定 + 署名検証省略**(Token Endpoint から TLS 直接受信のため
+   TLS サーバー認証が JWS の代わりになる)。id_token の claims は base64 デコードのみで読む
+   (`oauth.py::_decode_jwt_claims`)。JWKS 署名検証は将来 `[oidc]` extra に残す。
 3. ~~**デュアルランタイムの KDF 相互運用**: scrypt ハッシュは Workers で verify できない。
    同一 DB を両ランタイムで使う構成では KDF を PBKDF2 に固定する設定が要るか。~~
    **解決(2026-07-22 spike)**: 前提が崩れた — 現行 workerd の Pyodide には
@@ -366,7 +366,8 @@ hayate-auth/
 |---|---|---|
 | ~~**spike**~~ | **完了(2026-07-22)**: WebCrypto PBKDF2 に加え wasm hashlib.scrypt / pbkdf2_hmac を実測 | ✅ research/kdf.md に全数値。§17-3 解決(全ランタイム scrypt 統一)。本番 CPU 課金の確認だけ v0.1 の deploy 検証に持ち越し |
 | ~~**v0.1**~~ | **完了(2026-07-22)**: Adapter + sqlite3 / セッション / email+password / CSRF / `require_session` | ✅ ログイン付き TODO(examples/todo)が **uvicorn とローカル workerd で無変更動作を実測**(workerd 側は wasm scrypt + sqlite + 401 ガードまで確認。vendor は Windows 回避の手動、アプリコードは無変更)。✅ ASVS V6/V7 表を docs/asvs.md に初回公開(17 covered)。テスト 41 + example 2。本番 deploy(CPU 課金実測)は公開判断時に実施 |
-| v0.2 | **出荷(2026-07-23)**: verification(メール検証 / リセット)+ generate CLI + D1 adapter。**OAuth PKCE は hayate-fetch の PyPI 公開待ちで 0.2.x に分割** | メール検証 / リセットの攻撃リグレッション(単回・期限・トークン混同・全セッション失効)緑。ASVS 17→20。social は OAuth 実装時 |
+| v0.2 | **出荷(2026-07-23)**: verification(メール検証 / リセット)+ generate CLI + D1 adapter | メール検証 / リセットの攻撃リグレッション(単回・期限・トークン混同・全セッション失効)緑。ASVS 17→20 |
+| v0.3 | **出荷(2026-07-23)**: OAuth 2.1 authorization-code + PKCE(Google / GitHub、S256)。state+verifier は HMAC 署名 cookie(DB レス、isolate 揮発耐性)。id_token は OIDC Core §3.1.3.7 で署名検証省略(§17-2)。HTTP は hayate-fetch backend 注入 | モックプロバイダで全フロー緑(PKCE challenge / state 照合 / アカウント再利用 / 未検証メール非リンク / open-redirect 拒否)。ASVS 20→23。9 テスト追加 |
 | v0.3 | プラグイン機構 + TOTP + magic link | コア外のプラグインが書ける |
 | v0.4 | passkey(`[passkey]` extra) | — |
 | v1.0 | API 凍結 | 本体 v1.0 より後。基準は本体に倣い外部利用の証拠を要件化 |

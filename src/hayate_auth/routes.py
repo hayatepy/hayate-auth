@@ -229,6 +229,12 @@ async def get_session(auth: Auth, request: Request) -> Response:
     return _json_response({"session": record, "user": user})
 
 
+def _sign_in_social(auth: Auth, request: Request) -> Any:
+    from .oauth import sign_in_social
+
+    return sign_in_social(auth, request)
+
+
 ROUTES = {
     ("POST", "/sign-up/email"): sign_up_email,
     ("POST", "/sign-in/email"): sign_in_email,
@@ -237,4 +243,5 @@ ROUTES = {
     ("POST", "/forget-password"): forget_password,
     ("POST", "/reset-password"): reset_password,
     ("GET", "/verify-email"): verify_email,
+    ("POST", "/sign-in/social"): _sign_in_social,
 }

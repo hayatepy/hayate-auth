@@ -9,17 +9,21 @@ from .crypto import (
     UnsupportedHashError,
     default_backend,
 )
+from .oauth import OAuthProvider, github, google
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "Adapter",
     "Auth",
     "CryptoBackend",
+    "OAuthProvider",
     "Pbkdf2Backend",
     "ScryptBackend",
     "UnsupportedHashError",
     "Where",
     "__version__",
     "default_backend",
+    "github",
+    "google",
 ]

@@ -29,6 +29,8 @@ class Auth:
         verification_ttl: timedelta = timedelta(hours=1),
         send_reset_password: Any | None = None,
         send_verification_email: Any | None = None,
+        providers: list[Any] | tuple[Any, ...] = (),
+        http_backend: Any | None = None,
     ) -> None:
         if not secret:
             raise ValueError("secret must be a non-empty string")
@@ -46,6 +48,10 @@ class Auth:
         # and checks tokens (DESIGN §10).
         self.send_reset_password = send_reset_password
         self.send_verification_email = send_verification_email
+        # OAuth (v0.3): registered providers by id, and the hayate-fetch
+        # backend override (tests inject a fake; None = runtime default).
+        self.providers = {provider.id: provider for provider in providers}
+        self.http_backend = http_backend
         self._dummy: str | None = None
 
     # -- the core ----------------------------------------------------------------------
@@ -61,6 +67,11 @@ class Auth:
 
         if raw.method == "POST" and not csrf.is_allowed(raw, self.trusted_origins):
             return problem(403, title="Cross-origin request rejected")
+
+        if raw.method == "GET" and sub.startswith("/callback/"):
+            from .oauth import oauth_callback
+
+            return await oauth_callback(self, raw, sub.removeprefix("/callback/"))
 
         handler = ROUTES.get((raw.method, sub))
         if handler is None:
