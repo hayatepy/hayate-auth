@@ -4,13 +4,14 @@ Standards-first authentication for [hayate](https://github.com/hayatepy/hayate) 
 a mountable, better-auth-style auth handler built on the WHATWG Request/Response
 model.
 
-> **Status: alpha (0.6.x).** Email+password, sessions, CSRF, email
+> **Status: alpha (0.7.x).** Email+password, sessions, CSRF, email
 > verification, password reset, **OAuth 2.1 + PKCE** (Google / GitHub), **TOTP
-> two-factor**, **API keys**, and an **OAuth 2.1 authorization server** (AS
+> two-factor**, **API keys**, an **OAuth 2.1 authorization server** (AS
 > mode: RFC 8414 metadata, RFC 7591 dynamic registration, PKCE-only code +
-> refresh grants) are implemented and attack-regression-tested; a `generate`
-> CLI and a Cloudflare D1 adapter ship too. Not yet security-audited — see
-> [SECURITY.md](SECURITY.md). The internal design memo (Japanese) lives in
+> refresh grants), **magic links**, and **passkeys** (WebAuthn L3, `[passkey]`
+> extra) are implemented and attack-regression-tested; a `generate` CLI, a
+> plugin API, and a Cloudflare D1 adapter ship too. Not yet security-audited —
+> see [SECURITY.md](SECURITY.md). The internal design memo (Japanese) lives in
 > [DESIGN.md](DESIGN.md).
 
 ```python
@@ -51,6 +52,33 @@ see [examples/todo](examples/todo).
 | POST `/sign-in/two-factor` | Second step when 2FA is on |
 | POST `/api-key/create` · `/verify` · `/delete` · GET `/api-key/list` | API keys (hashed, scoped, expiring) |
 | GET `/oauth2/authorize` · POST `/oauth2/consent` · `/oauth2/token` · `/oauth2/register` | AS mode: OAuth 2.1 authorization server |
+| POST `/sign-in/magic-link` → GET `/magic-link/verify` | Magic links (plugin) |
+| POST `/passkey/generate-register-options` · `/verify-registration` · `/generate-authenticate-options` · `/verify-authentication` · GET `/passkey/list-user-passkeys` · POST `/passkey/delete-passkey` | Passkeys (WebAuthn L3, `[passkey]` extra) |
+
+Magic links ship as the first `AuthPlugin` — plugins add routes with the
+same handler signature the built-ins use:
+
+```python
+from hayate_auth.plugins import magic_link
+
+auth = Auth(
+    secret=..., adapter=adapter,
+    plugins=[magic_link(send=deliver_link_email)],  # async (email, token) -> None
+)
+```
+
+Passkeys need the extra (`pip install hayate-auth[passkey]`, pulls
+py_webauthn) and a relying-party config:
+
+```python
+from hayate_auth import PasskeyConfig
+
+auth = Auth(
+    secret=..., adapter=adapter,
+    passkey=PasskeyConfig(rp_id="example.com", rp_name="My App",
+                          origin="https://example.com"),
+)
+```
 
 ## AS mode: be the OAuth authorization server
 

@@ -217,6 +217,9 @@ class Adapter(Protocol):
 | POST `/sign-in/social` → GET `/callback/:provider` | OAuth(PKCE) | v0.3 |
 | POST `/two-factor/enable` / `/verify` / `/disable`・`/sign-in/two-factor` | TOTP 2FA | v0.4 |
 | POST `/api-key/create` / `/verify` / `/delete`・GET `/api-key/list` | API キー(better-auth 参考) | v0.5 |
+| GET `/oauth2/authorize`・POST `/oauth2/consent` / `/oauth2/token` / `/oauth2/register` | AS モード(§19) | v0.6 |
+| POST `/sign-in/magic-link` → GET `/magic-link/verify` | magic link(プラグイン、§20.1) | v0.7 |
+| POST `/passkey/generate-register-options` / `/verify-registration` / `/generate-authenticate-options` / `/verify-authentication`・GET `/passkey/list-user-passkeys`・POST `/passkey/delete-passkey` | passkey(`[passkey]` extra、§20.3) | v0.7 |
 
 Python 側 API(表記は PEP 8):
 
@@ -283,13 +286,16 @@ class CryptoBackend(Protocol):
 (`send(to, subject, text, html=None)`)。SMTP / SES / Resend 等の実装は持たない。
 理由: 送信手段は環境依存の極み。ゼロ依存維持。
 
-## 11. プラグイン機構(v0.3 で抽出)
+## 11. プラグイン機構(v0.3 で抽出 → v0.7 で実施)
 
 プラグイン = 追加エンドポイント + 追加スキーマ + before/after フック、という
 better-auth の骨格は採る。ただし **v0.1–0.2 は直書きし、v0.3 で TOTP / magic link を
 移植する過程で API を抽出する**(本体の validator フックと同じ実例駆動)。
 先に抽象を固定しない理由: better-auth のプラグイン API は client 型推論と対で
 設計されており、client を持たない Python では形が変わるはずだから。
+
+> **v0.7 で実施(§20.2)**: 抽出できた最小形は `AuthPlugin(id, routes)` のみ。
+> スキーマ拡張とフックは実例が立たず**見送り**(理由は §20.2 の却下表)。
 
 ## 12. 実行モデル
 
@@ -383,7 +389,7 @@ hayate-auth/
 | v0.4 | **出荷(2026-07-23)**: TOTP 二要素(RFC 6238、stdlib hmac + base32)。two_factor テーブル / enable・verify・disable / **二段サインイン**(パスワード OK でも 2FA 有効時はセッション不発行 → HMAC 署名チャレンジ cookie → TOTP コードで交換) | RFC 6238 Appendix B ベクタ一致。攻撃面: パスワード単独ではセッション不成立・チャレンジ必須・誤コード拒否。ASVS 23→25。13 テスト。magic link と正式プラグイン API 抽出(§11)は後続 |
 | v0.5 | **出荷(2026-07-23)**: **API キー**(better-auth の API Key plugin 参考)。create/verify/list/delete、`ha_` プレフィックス + SHA-256 ハッシュ保存、scope / expiry、`last_used_at`。`Auth.verify_api_key()` | ハッシュのみ保存(平文流出なし)、期限切れ purge、他ユーザーのキー削除不可を固定。**hayate-mcp の RS(`verify_token`)に差し込む統合を実測**(API キーで MCP 保護)。13 テスト |
 | v0.6 | **出荷(2026-07-23)**: **AS モード**(§19 — RFC 8414 / 7591 / OAuth 2.1 + PKCE S256 / RFC 8707、opaque + family rotation)。mcp の RS と合流し「MCP + AS を 1 アプリ」完全形 | 公式 SDK クライアント(`OAuthClientProvider`)の実 HTTP フル一周を CI 常設(examples/mcp-oauth)。MCP Inspector CLI で tools/call 実測・無トークン 401(research/authorization-server.md)。攻撃リグレッション: code 再利用→family 失効 / refresh reuse→全滅 / PKCE / client・resource 混同。ASVS 25→37。47 テスト追加 |
-| v0.7 | passkey(`[passkey]` extra)/ magic link / プラグイン API 抽出 | — |
+| v0.7 | **出荷(2026-07-23)**: **magic link**(プラグインとして新規、§20.1)+ **プラグイン API 抽出**(`AuthPlugin(id, routes)`、API キーを内部移植 — §20.2)+ **passkey**(WebAuthn L3、py_webauthn、`[passkey]` extra、§20.3) | soft-webauthn の実 ceremony で py_webauthn の実検証経路をテスト(モックなし)。攻撃面: 列挙防止 / token 混同 / open redirect / origin 不一致 / **sign counter 巻き戻し** / attestation 再送 / owner 越権。ASVS 37→48。19 テスト追加(全 153) |
 | v1.0 | API 凍結 | 本体 v1.0 より後。基準は本体に倣い外部利用の証拠を要件化 |
 
 ### 決定済み(2026-07-22)
@@ -495,3 +501,80 @@ hayate-auth/
 | consent 画面の内蔵 | hosted UI を持たない方針(§15)。better-auth も画面はアプリ委譲 |
 | client_credentials グラント | ユーザー不在のトークンは MCP の主要ユースに無い。証拠駆動 |
 | 事前登録のみ(DCR なし) | MCP クライアントの実態(Inspector / Claude Code)は DCR 前提 |
+
+---
+
+## 20. v0.7 — magic link / プラグイン機構 / passkey
+
+> 2026-07-23 起草。§11 の宿題(プラグイン API 抽出)を、新規実装 1 つ
+> (magic link)+ 既存機能の移植 1 つ(API キー)という 2 実例で実施する。
+> passkey は W3C WebAuthn Level 3 を `[passkey]` extra で。
+
+### 20.1 magic link(プラグインとして新規実装)
+
+- **決定**: `hayate_auth.plugins.magic_link(send=..., ttl=timedelta(minutes=5))` が
+  `AuthPlugin` を返し、`Auth(plugins=[...])` で有効化する。コアの `Auth.__init__` に
+  設定は増やさない(send コールバックも TTL もファクトリ引数)。
+- エンドポイント(better-auth の magicLink プラグインとパス互換):
+  - `POST /sign-in/magic-link {email, callback_url?, name?}` → 常に `{"success": true}`
+    (列挙防止 §9。実在ユーザーか否かで応答・所要を変えない)
+  - `GET /magic-link/verify?token=…` → 単回消費 → セッション発行 + `callback_url` へ 302
+- トークンは verification テーブル流用(`identifier = "magic:{email}"`、ハッシュ保存・
+  単回・期限は §2 の「明示的な独自部分」の既存機構そのまま)。**新テーブルなし**。
+- callback_url はトークン発行時に検証(oauth.py の `_redirect_allowed` と同じ
+  open-redirect 防御)し、**署名なしで client に往復させない** — verification の
+  value 側に JSON で同梱し、verify 時はそこから読む。
+- 未登録メールは **email_verified=1 で新規作成**(リンク到達 = メール所有証明)。
+  - 却下: `disable_sign_up` オプション — 需要の証拠が出るまで増やさない(YAGNI)。
+  - name はサインアップを兼ねる場合の表示名として任意受領。
+
+### 20.2 プラグイン機構(§11 の実施結果)
+
+- **抽出できた最小形**:
+
+  ```python
+  @dataclass(frozen=True)
+  class AuthPlugin:
+      id: str
+      routes: Mapping[tuple[str, str], Handler]  # (method, subpath) -> (auth, request) -> Response
+  ```
+
+  `Auth(plugins=(…))` が組み込みルート表と合成する。**衝突は構築時 ValueError**
+  (силent override は事故のもと)。ハンドラ シグネチャは組み込みと同一
+  (`(auth, request)`)なので、移植は辞書の付け替えだけ。
+- **実例 2 つで検証**: ① magic link(新規、外部プラグインと同じ machinery)、
+  ② **API キーを内部プラグインへ移植**(パス・スキーマ・`verify_api_key` は不変。
+  ルート表が routes.py の静的 dict から `Auth._routes` の合成に変わるだけ)。
+  TOTP は移植**しない** — sign-in 本流との結合(パスワード成功 → チャレンジ分岐)が
+  あり、フック抽象が要る。実例 1 つでフックを固定するのは §11 の教訓に反する。
+- **見送り(却下表)**:
+
+  | 見送り | 理由 |
+  |---|---|
+  | スキーマ拡張(plugin models / DDL) | 実例が立たない。passkey(§20.3)で直面したが、コア所有テーブル(schema.py)で解決した。外部プラグインが新テーブルを要求する証拠が出たら、adapter の検証表(injection-safe の根拠)への合成方法ごと設計する |
+  | before/after フック | 消費者が TOTP 1 つだけ。1 実例で抽象を固定しない(§11) |
+  | プラグイン設定の中央管理 | ファクトリ引数(magic_link(send=…))で足りる。Auth を汚さない |
+
+### 20.3 passkey(W3C WebAuthn Level 3、`[passkey]` extra)
+
+- **決定**: 検証は **py_webauthn**(`webauthn>=2`)に委譲。COSE / CBOR / 署名検証を
+  自作しないのは §8 の鉄則。コア初の optional 依存なので **`[passkey]` extra** とし、
+  未インストールで passkey ルートに触れると 501 Problem Details(導入方法を title に)。
+- 設定: `Auth(passkey=PasskeyConfig(rp_id, rp_name, origin))`。未設定なら 404
+  (AS モードの `authorization_server=None` と同じパターン)。
+- スキーマ: `passkey` テーブル(credential_id UNIQUE、public_key、**counter**、
+  device_type、backed_up、transports、name?)。**schema.py 所有**(§20.2 のとおり
+  プラグイン化しない)。
+- エンドポイント(better-auth の passkey プラグインとパス互換):
+  `POST /passkey/generate-register-options`(要セッション)/ `POST /passkey/verify-registration` /
+  `POST /passkey/generate-authenticate-options`(email 任意 — 指定時 allowCredentials、
+  未指定は discoverable)/ `POST /passkey/verify-authentication`(成功でセッション発行)/
+  `GET /passkey/list-user-passkeys` / `POST /passkey/delete-passkey`。
+- **challenge は HMAC 署名 cookie**(AS の consent cookie・OAuth state cookie と同じ
+  DB レス機構、TTL 5 分)。register チャレンジは user_id を同梱し他人の応答を拒否。
+- 攻撃リグレッションで固定するもの: challenge 不一致 / origin 不一致(py_webauthn の
+  expected_origin)/ **sign counter の巻き戻し拒否**(クローン検知)/ 他ユーザーの
+  credential 削除不可 / 二重登録(同 credential_id)拒否。
+- テスト: 実 ceremony を `soft-webauthn`(dev 依存)で合成し、モックではなく
+  py_webauthn の実検証経路を通す。噛み合わなければ cryptography(py_webauthn の
+  推移依存)で ES256 応答を手組みする。

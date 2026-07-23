@@ -39,29 +39,37 @@ wheels = [
 
 [[package]]
 name = "hayate"
-version = "0.6.0"
+version = "0.8.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ed/2f/83200319932b5e18f597e3a7a77374dd776e5a026c87258fde336d24051f/hayate-0.6.0.tar.gz", hash = "sha256:5056bfdb6d5b1c9fba580df1315845d923f2fdf4d86660dff2de342e873ebcef", size = 45796, upload-time = "2026-07-22T11:40:05.648Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ae/d4/be6689efdba8dfa972b5fdad67adc62c12c42ada440b6b5e8cf044a87d68/hayate-0.8.0.tar.gz", hash = "sha256:96b91b582787099f2752dd8411c5cc21039fe10ab85f5582a18e27a233227791", size = 47292, upload-time = "2026-07-22T16:15:58.761Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8c/54/a4547e91c6215a85b9d874696df6a5a6ff22c8093b1feb09940806f00bd8/hayate-0.6.0-py3-none-any.whl", hash = "sha256:5f0db8fb70978df5598c2213a523a4c904534517c8f8afa5140c221ad5381cc4", size = 61081, upload-time = "2026-07-22T11:40:04.335Z" },
+    { url = "https://files.pythonhosted.org/packages/e2/da/bb7253c59b1f4acc48d00ebac23ece309b38fc10e208e0714949b67d1b19/hayate-0.8.0-py3-none-any.whl", hash = "sha256:63bb1757159c86680015da1745614026c5ae0f9ea7b4d5ec2bec394c6fac9cae", size = 63166, upload-time = "2026-07-22T16:15:57.551Z" },
 ]
 
 [[package]]
 name = "hayate-auth"
-version = "0.1.0"
+version = "0.7.0"
 source = { editable = "../../" }
 dependencies = [
     { name = "hayate" },
+    { name = "hayate-fetch" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "hayate", specifier = ">=0.6.0" }]
+requires-dist = [
+    { name = "hayate", specifier = ">=0.8.0" },
+    { name = "hayate-fetch", specifier = ">=0.1.0" },
+    { name = "webauthn", marker = "extra == 'passkey'", specifier = ">=2.0" },
+]
+provides-extras = ["passkey"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-asyncio", specifier = ">=0.25" },
     { name = "ruff", specifier = ">=0.9" },
+    { name = "soft-webauthn", specifier = ">=0.1.4" },
+    { name = "webauthn", specifier = ">=2.0" },
 ]
 
 [[package]]
@@ -93,6 +101,18 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.25" },
     { name = "uvicorn", specifier = ">=0.30" },
     { name = "workers-py" },
+]
+
+[[package]]
+name = "hayate-fetch"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "hayate" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e2/24/fd7d01616172eacab49cf6dc2169dd0a42a0c8d3f6bc0836b1a4f94cbe21/hayate_fetch-0.1.0.tar.gz", hash = "sha256:ecfd6992a24a079f39db2434ae5f3455e363a1b488d819a08e2fdf15dfb549e3", size = 3571, upload-time = "2026-07-22T19:37:54.635Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7b/a3/374051fcc54f7742fcaf2a237b782525efc6bf6aa18d28ec75b35ea40177/hayate_fetch-0.1.0-py3-none-any.whl", hash = "sha256:16d4d95884367c3e9065946a5b947a6935c0c49a34cbcc6a3b4815feaa404302", size = 4788, upload-time = "2026-07-22T19:37:53.46Z" },
 ]
 
 [[package]]

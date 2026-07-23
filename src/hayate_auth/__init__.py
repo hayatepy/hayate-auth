@@ -12,15 +12,19 @@ from .crypto import (
     default_backend,
 )
 from .oauth import OAuthProvider, github, google
+from .passkey import PasskeyConfig
+from .plugin import AuthPlugin
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 __all__ = [
     "Adapter",
     "Auth",
+    "AuthPlugin",
     "AuthorizationServer",
     "CryptoBackend",
     "OAuthProvider",
+    "PasskeyConfig",
     "Pbkdf2Backend",
     "ScryptBackend",
     "UnsupportedHashError",

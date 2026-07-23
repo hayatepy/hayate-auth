@@ -34,6 +34,8 @@ class Auth:
         http_backend: Any | None = None,
         totp_issuer: str = "hayate-auth",
         authorization_server: Any | None = None,
+        plugins: list[Any] | tuple[Any, ...] = (),
+        passkey: Any | None = None,
     ) -> None:
         if not secret:
             raise ValueError("secret must be a non-empty string")
@@ -59,6 +61,18 @@ class Auth:
         # AS mode (v0.6): an AuthorizationServer config, or None. When set,
         # the OAuth 2.1 endpoints and the RFC 8414 well-known route go live.
         self.authorization_server = authorization_server
+        # Passkeys (v0.7): a PasskeyConfig, or None -> routes answer 404.
+        self.passkey = passkey
+        # Route table = built-ins + built-in plugins + user plugins
+        # (DESIGN §20.2). A collision is a construction-time error.
+        from .api_key import PLUGIN as api_key_plugin
+
+        self._routes = dict(ROUTES)
+        for plugin in (api_key_plugin, *plugins):
+            for key, handler in plugin.routes.items():
+                if key in self._routes:
+                    raise ValueError(f"plugin {plugin.id!r} redefines route {key[0]} {key[1]}")
+                self._routes[key] = handler
         self._dummy: str | None = None
 
     # -- the core ----------------------------------------------------------------------
@@ -86,7 +100,7 @@ class Auth:
 
             return await oauth_callback(self, raw, sub.removeprefix("/callback/"))
 
-        handler = ROUTES.get((raw.method, sub))
+        handler = self._routes.get((raw.method, sub))
         if handler is None:
             return problem(404, title="Not Found")
         return await handler(self, raw)

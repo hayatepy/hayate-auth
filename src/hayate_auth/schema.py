@@ -94,6 +94,18 @@ MODELS: dict[str, tuple[str, ...]] = {
         "created_at",
         "updated_at",
     ),
+    "passkey": (
+        "id",
+        "user_id",
+        "name",
+        "credential_id",
+        "public_key",
+        "counter",
+        "device_type",
+        "backed_up",
+        "transports",
+        "created_at",
+    ),
 }
 
 SQLITE_SCHEMA = """\
@@ -210,6 +222,19 @@ CREATE TABLE IF NOT EXISTS "oauth_consent" (
   updated_at TEXT NOT NULL,
   UNIQUE (user_id, client_id)
 );
+CREATE TABLE IF NOT EXISTS "passkey" (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  name TEXT,
+  credential_id TEXT NOT NULL UNIQUE,
+  public_key TEXT NOT NULL,
+  counter INTEGER NOT NULL DEFAULT 0,
+  device_type TEXT,
+  backed_up INTEGER NOT NULL DEFAULT 0,
+  transports TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS passkey_user_id ON "passkey"(user_id);
 """
 
 # Same shape for PostgreSQL. Timestamps stay ISO-8601 TEXT and booleans stay

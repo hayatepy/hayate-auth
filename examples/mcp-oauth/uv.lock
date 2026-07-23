@@ -224,7 +224,7 @@ wheels = [
 
 [[package]]
 name = "hayate-auth"
-version = "0.6.0"
+version = "0.7.0"
 source = { editable = "../../" }
 dependencies = [
     { name = "hayate" },
@@ -235,13 +235,17 @@ dependencies = [
 requires-dist = [
     { name = "hayate", specifier = ">=0.8.0" },
     { name = "hayate-fetch", specifier = ">=0.1.0" },
+    { name = "webauthn", marker = "extra == 'passkey'", specifier = ">=2.0" },
 ]
+provides-extras = ["passkey"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-asyncio", specifier = ">=0.25" },
     { name = "ruff", specifier = ">=0.9" },
+    { name = "soft-webauthn", specifier = ">=0.1.4" },
+    { name = "webauthn", specifier = ">=2.0" },
 ]
 
 [[package]]

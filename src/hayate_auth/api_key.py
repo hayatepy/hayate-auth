@@ -22,6 +22,7 @@ from hayate import Request, Response, problem
 from . import session as sessions
 from ._uuid7 import new_id
 from .adapter import Where
+from .plugin import AuthPlugin
 from .routes import _json_response, _read_json_object
 
 if TYPE_CHECKING:
@@ -162,3 +163,17 @@ async def verify_key(auth: Auth, key: str) -> dict[str, Any] | None:
         "key_id": row["id"],
         "name": row["name"],
     }
+
+
+# The API-key endpoints ship as a built-in plugin: the first migration of
+# existing code onto the AuthPlugin surface (DESIGN §20.2). Paths, schema,
+# and ``Auth.verify_api_key`` are unchanged.
+PLUGIN = AuthPlugin(
+    id="api-key",
+    routes={
+        ("POST", "/api-key/create"): create,
+        ("POST", "/api-key/verify"): verify,
+        ("GET", "/api-key/list"): list_keys,
+        ("POST", "/api-key/delete"): delete,
+    },
+)

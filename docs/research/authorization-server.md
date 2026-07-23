@@ -152,10 +152,10 @@ URL: https://hayate-auth-as-spike.digiman-haya-labs.workers.dev(実 D1
 
 ## 6. 未実測(正直に)
 
-- **Inspector Web UI のブラウザ内 OAuth フロー**は未実測(このセッションの環境では
-  ブラウザ操作パネルが使えなかったため CLI + Bearer で代替)。ただしブラウザ相当の
+- **Inspector Web UI のブラウザ内 OAuth フロー**は未実測(2 セッションで再試行したが
+  ブラウザ操作パネルが表示されない環境のため CLI + Bearer で代替)。ただしブラウザ相当の
   hop(login → consent → callback)は §1 の SDK E2E が同一プロトコル実装で通している。
-  UI での目視一周は次回セッションの宿題(起動手順: `uv run uvicorn app:app --port 8931`
+  UI での目視一周は人間の手で 5 分の宿題(起動手順: `uv run uvicorn app:app --port 8931`
   + `npx @modelcontextprotocol/inspector`、demo@example.com / demo password 42)。
 - **MCP+AS 込みの本番 deploy**: AS-only は §5 で本番緑。mcp 込み bundle は無料プランの
   3 MiB を超える(§5 罠 2)。Workers Paid(10 MiB)にすれば試せるが、gzip 後に

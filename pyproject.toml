@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "hayate-auth"
-version = "0.6.0"
+version = "0.7.0"
 description = "Authentication for hayate as a pure fetch(Request) -> Response handler: email+password, sessions, CSRF"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -22,6 +22,9 @@ classifiers = [
 ]
 dependencies = ["hayate>=0.8.0", "hayate-fetch>=0.1.0"]
 
+[project.optional-dependencies]
+passkey = ["webauthn>=2.0"]
+
 [project.urls]
 Repository = "https://github.com/hayatepy/hayate-auth"
 
@@ -30,6 +33,8 @@ dev = [
   "pytest>=8.3",
   "pytest-asyncio>=0.25",
   "ruff>=0.9",
+  "soft-webauthn>=0.1.4",
+  "webauthn>=2.0",
 ]
 
 [tool.pytest.ini_options]

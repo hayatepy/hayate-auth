@@ -24,6 +24,15 @@ release. Status values: **covered** (implemented + regression-tested),
 | Federated login does not auto-link unverified emails (takeover defense) | covered | `tests/test_oauth.py::test_unverified_email_does_not_hijack_existing_user` |
 | Multi-factor authentication (TOTP, RFC 6238) | covered | `totp.py`, `two_factor.py`, `tests/test_totp.py` |
 | Password alone cannot complete sign-in when 2FA is on | covered | `tests/test_totp.py::test_password_alone_never_yields_a_session_with_2fa` |
+| Magic-link tokens are single-use, hashed at rest, short-lived (5 min default) | covered | `plugins/magic_link.py`, `tests/test_magic_link.py::test_token_is_single_use`, `::test_expired_token_is_rejected` |
+| Magic-link requests never disclose account existence | covered | `tests/test_magic_link.py::test_unknown_and_known_emails_answer_identically` |
+| Magic-link callback URLs are origin-restricted (open-redirect defense) | covered | `tests/test_magic_link.py::test_offsite_callback_url_is_rejected` |
+| Token-type confusion rejected across flows (magic vs reset vs verify prefixes) | covered | `tests/test_magic_link.py::test_magic_token_cannot_pass_as_reset_token` |
+| Phishing-resistant authenticator support (WebAuthn L3 passkeys; origin + rp_id + challenge binding via py_webauthn) | covered | `passkey.py`, `tests/test_passkey.py::test_wrong_origin_is_rejected` |
+| Passkey sign-counter regression (cloned authenticator) rejected | covered | `tests/test_passkey.py::test_sign_counter_rollback_is_rejected` |
+| Passkey challenges are purpose-bound, short-lived, HMAC-signed | covered | `passkey.py`, `tests/test_passkey.py::test_registration_needs_session_and_challenge` |
+| Replayed registration responses cannot duplicate a credential | covered | `tests/test_passkey.py::test_replayed_attestation_cannot_register_twice` |
+| Passkey management is owner-scoped | covered | `tests/test_passkey.py::test_delete_is_owner_scoped` |
 
 ## V7 — Session Management
 
@@ -61,4 +70,4 @@ release. Status values: **covered** (implemented + regression-tested),
 | Anti-automation on open dynamic client registration | external | rate limiting stays the hayate middleware / infrastructure mandate (DESIGN §9) |
 | Token revocation / introspection endpoints | planned (evidence-gated) | DESIGN §19.5 |
 
-**Ratchet: 37 covered** (raise-only; update this line with every release).
+**Ratchet: 48 covered** (raise-only; update this line with every release).
