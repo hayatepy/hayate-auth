@@ -150,6 +150,33 @@ URL: https://hayate-auth-as-spike.digiman-haya-labs.workers.dev(実 D1
   のため、この spike は log_n=14 で AS フロー自体の検証に集中した。
   **認証エンドポイントの本番は有料プラン前提**という docs の前提は変わらない。
 
+## 5.5 MCP+AS 込み本番 deploy の第 2 ラウンド(2026-07-23、auth 0.7.0 公開後)
+
+mcp 込み bundle(hayate-auth 0.7.0 + hayate-mcp 0.6.0 + mcp 1.12.4、python_modules
+12 MiB raw)を本番に投入して確定した事実:
+
+- **bundle サイズは障害ではなかった**: gzip 後 3 MiB 内に収まり、Free プランのままでも
+  upload / deploy は成功する(§5 罠 2 の「44 MiB」は .venv 巻き込み時の数字)。
+- **遅延 import(リクエスト時に mcp を import)は本番で未達**: vendored pydantic の
+  core-schema 構築中に **Python Workers ランタイム固有の CPU リミッター**
+  (`introspection.CpuLimitExceeded`、実測 ~2 s CPU で発火。`[limits] cpu_ms` とは別枠)
+  に当たり 500/1102。ローカル workerd にはこのリミッターが無いため気づけない。
+- **グローバル import も本番で未達**: deploy validator が
+  **`Top-level await in module is unsettled`**(startup 予算内にモジュール評価が
+  終わらない)で拒否。恐れていた entropy(DisallowedOperation)には到達すらしない。
+  vendored pydantic / pydantic-core を bundle から外しランタイム内蔵に任せても
+  (ModuleNotFound は出ない = 内蔵解決自体は機能)、残りの純 Python チェーン
+  (mcp / anyio / httpx / starlette / jsonschema / rpds)だけで startup 予算を超える。
+- **結論: mcp SDK は 2026-07 時点の本番 Cloudflare Python Workers に載らない**
+  (ローカル workerd では両方式とも動くのと対照的)。mcp research/pyodide.md の
+  「Workers 本番のコールドスタート未検証」への確定回答。
+- 残る未検証 1 つ: **Workers Paid 反映後**に `[limits] cpu_ms` を上げた遅延 import 版
+  (ランタイムリミッターが cpu_ms に追従するなら通る)。Paid の反映を確認してから
+  1 実験で決着する。※この検証時点ではアカウントは Free のまま
+  (`CPU limits are not supported for the Free plan` で cpu_ms 設定を拒否された)。
+- 本番 Worker の現状: mcp 込み・遅延 import 版がデプロイされたまま —
+  **AS 部分(metadata / oauth2 / protected)は全部動く**。/mcp 系のみ 500。
+
 ## 6. 未実測(正直に)
 
 - **Inspector Web UI のブラウザ内 OAuth フロー**は未実測(2 セッションで再試行したが
@@ -157,6 +184,6 @@ URL: https://hayate-auth-as-spike.digiman-haya-labs.workers.dev(実 D1
   hop(login → consent → callback)は §1 の SDK E2E が同一プロトコル実装で通している。
   UI での目視一周は人間の手で 5 分の宿題(起動手順: `uv run uvicorn app:app --port 8931`
   + `npx @modelcontextprotocol/inspector`、demo@example.com / demo password 42)。
-- **MCP+AS 込みの本番 deploy**: AS-only は §5 で本番緑。mcp 込み bundle は無料プランの
-  3 MiB を超える(§5 罠 2)。Workers Paid(10 MiB)にすれば試せるが、gzip 後に
-  収まるかは未検証 — プラン変更は課金判断なので保留。
+- **MCP+AS 込みの本番**: §5.5 で「サイズは通るが import が载らない」ことを確定。
+  残るのは Paid 反映後の cpu_ms 実験 1 つのみ。根本解は Cloudflare 側の
+  パッケージスナップショット拡充(mcp チェーンの内蔵化)か Pyodide の高速化待ち。
