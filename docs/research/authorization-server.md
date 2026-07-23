@@ -73,13 +73,40 @@ npx … --method tools/call --tool-name echo --tool-arg text="inspector over oau
   .venv --target python_modules --no-build -r pylock.toml --preview-features pylock` +
   `.synced` touch)で回避。罠 1(UV env 前置)も引き続き必要。
 
-## 4. 未実測(正直に)
+## 4. MCP + AS を 1 つの Worker で(2026-07-23、同 spike に mcp を統合)
+
+spike/as-workers に hayate-mcp 0.5.0 を追加し、**単一の workerd isolate で
+「AS(トークン発行)+ MCP RS(検証・実行)+ D1」を実測**:
+
+- pylock は Pyodide index 込みで期待どおり解決: **mcp 1.12.4**(Workers の既知フロア)+
+  `pydantic_core 2.27.2` wasm wheel。手動 vendor は wasm platform 指定
+  (mcp research/pyodide.md の手順、`.synced` は `printf '1.15.0'` — 空 touch 不可)。
+- mcp の遅延 import 規律(グローバルスコープの entropy 禁止)は
+  hayate-mcp examples/workers のパターンをそのまま流用。
+- 実測結果(すべて workerd 上):
+  - GET `/.well-known/oauth-protected-resource` → RFC 9728 PRM(resource=/mcp、
+    authorization_servers=[同一 origin])
+  - 未認証 POST /mcp → **401** + `WWW-Authenticate: Bearer resource_metadata="…"`
+  - AS フロー(resource=/mcp)で取得した Bearer 付き initialize → **200**、
+    `protocolVersion: 2025-06-18`(SDK 1.12.4 — ランタイム依存の documented subset どおり)
+  - **MCP Inspector CLI の `tools/call` が成功**(`echo: one worker, oauth + mcp`)
+  - バンドル: Total 4226 modules / ~44.1 MiB(mcp research/pyodide.md の ~43.5 MiB と整合)
+
+**発見(要修正、hayate-mcp 側)**: `WWW-Authenticate` の `resource_metadata` URL が
+`{resource}/.well-known/oauth-protected-resource`(パス後置)になる一方、実際に PRM を
+serve するのは常にルートの `/.well-known/oauth-protected-resource`。**RFC 9728 §3.1 の
+正規形式は path-insertion**(resource にパスがある場合
+`/.well-known/oauth-protected-resource/mcp`)であり、ヘッダと serve パスが互いにも
+仕様にも一致していない。クライアント(SDK / Inspector)はフォールバック探索で PRM を
+見つけるため実害が出ていなかった。→ hayate-mcp 側で metadata_url / serve パス /
+register を path-insertion 形式に揃える(mcp の次リリース)。
+
+## 5. 未実測(正直に)
 
 - **Inspector Web UI のブラウザ内 OAuth フロー**は未実測(このセッションの環境では
   ブラウザ操作パネルが使えなかったため CLI + Bearer で代替)。ただしブラウザ相当の
   hop(login → consent → callback)は §1 の SDK E2E が同一プロトコル実装で通している。
   UI での目視一周は次回セッションの宿題(起動手順: `uv run uvicorn app:app --port 8931`
   + `npx @modelcontextprotocol/inspector`、demo@example.com / demo password 42)。
-- **mcp SDK 込みの 1 アプリを workerd に載せる統合**(examples/mcp-oauth 相当の Workers 版)
-  は未実測。AS 側(§3)と mcp の Workers stateless 経路(mcp research/pyodide.md)は
-  それぞれ実証済みなので、残るのは bundle 統合のみ。証拠が要るのは D1 共有と依存サイズ。
+- **Workers 本番(`pywrangler deploy`)での MCP+AS**: ローカル workerd では緑。本番は
+  CPU 課金(scrypt ~0.5–1 s / sign-up・sign-in のみ)と D1 実体で確認してから謳う。
