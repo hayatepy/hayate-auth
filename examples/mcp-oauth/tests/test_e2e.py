@@ -84,7 +84,11 @@ async def test_unauthenticated_request_points_at_the_metadata(endpoint):
         challenge = res.headers.get("www-authenticate", "")
         assert "resource_metadata=" in challenge
 
-        prm = await anon.get(f"{BASE}/.well-known/oauth-protected-resource")
+        # RFC 9728 §3.1 path-insertion: the well-known segment goes between
+        # host and the resource's path (hayate-mcp >= 0.6.0).
+        prm_url = f"{BASE}/.well-known/oauth-protected-resource/mcp"
+        assert challenge.partition('resource_metadata="')[2].startswith(prm_url)
+        prm = await anon.get(prm_url)
         assert prm.status_code == 200
         doc = prm.json()
         assert doc["resource"] == endpoint

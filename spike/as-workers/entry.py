@@ -114,8 +114,9 @@ async def mcp_route(c: Context):
     return await get_mount().fetch(c.req)
 
 
-@app.get("/.well-known/oauth-protected-resource")
+@app.get("/.well-known/oauth-protected-resource/mcp")
 async def protected_resource_metadata(c: Context):
+    # RFC 9728 §3.1 path-insertion form (hayate-mcp >= 0.6.0).
     return await get_mount().fetch(c.req)
 
 

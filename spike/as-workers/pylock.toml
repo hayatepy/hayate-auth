@@ -37,8 +37,8 @@ wheels = [{ url = "https://files.pythonhosted.org/packages/7b/a3/374051fcc54f774
 
 [[packages]]
 name = "hayate-mcp"
-version = "0.5.0"
-wheels = [{ url = "https://files.pythonhosted.org/packages/8f/dd/c1a95f5ffa93a1652e4739a094ec04730f1d81a7b16c53290c327473ac31/hayate_mcp-0.5.0-py3-none-any.whl", upload-time = 2026-07-22T21:17:03Z, size = 12179, hashes = { sha256 = "e3a7f0570288e1a6edbec6d3b609614671086e9da8e61e3669e781e9d51035e3" } }]
+version = "0.6.0"
+wheels = [{ url = "https://files.pythonhosted.org/packages/e0/1a/35e06b06211379361693f1802d91dca48c8b4a4321d085c501610b38fa22/hayate_mcp-0.6.0-py3-none-any.whl", upload-time = 2026-07-23T04:21:11Z, size = 12480, hashes = { sha256 = "6e449de392383b5cabee8f3de0eb0101575f80a7d2cd3c7f22f4de9a3a193397" } }]
 
 [[packages]]
 name = "httpx"

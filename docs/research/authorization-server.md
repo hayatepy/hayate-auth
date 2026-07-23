@@ -98,8 +98,12 @@ serve するのは常にルートの `/.well-known/oauth-protected-resource`。*
 正規形式は path-insertion**(resource にパスがある場合
 `/.well-known/oauth-protected-resource/mcp`)であり、ヘッダと serve パスが互いにも
 仕様にも一致していない。クライアント(SDK / Inspector)はフォールバック探索で PRM を
-見つけるため実害が出ていなかった。→ hayate-mcp 側で metadata_url / serve パス /
-register を path-insertion 形式に揃える(mcp の次リリース)。
+見つけるため実害が出ていなかった。→ **hayate-mcp 0.6.0 で是正・PyPI 公開済み**
+(metadata_url / serve パス / register を path-insertion に統一)。workerd 上で再実測:
+`/.well-known/oauth-protected-resource/mcp` が 200、401 の広告 URL が serve パスと一致、
+是正前に発行したトークンも D1 経由で有効のまま(vendor 更新 + 再起動をまたいだ)。
+uvicorn 側も examples/mcp-oauth の E2E を mcp 0.6.0 で再実行して緑
+(SDK クライアントの一周 + 広告 URL 一致のアサーション追加)。
 
 ## 5. 未実測(正直に)
 
