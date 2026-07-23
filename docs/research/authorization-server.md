@@ -43,13 +43,43 @@ npx … --method tools/call --tool-name echo --tool-arg text="inspector over oau
   `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` が出るが、
   結果出力後のプロセス終了時 assert であり測定には無関係。
 
-## 3. 未実測(正直に)
+## 3. workerd + D1 実測(2026-07-23、spike/as-workers、0.6.0 公開後)
+
+環境: ローカル workerd(`pywrangler dev`、workers-py 1.15.0)+ wrangler ローカル D1
+(miniflare SQLite)。**PyPI の hayate-auth 0.6.0 を vendor**(pylock が PyPI 解決 —
+0.0.x 早期公開が検証インフラを兼ねる、の実利がここでも効いた)。
+
+- `generate --dialect d1` の DDL が `wrangler d1 execute AUTH_DB --local --file` で
+  そのまま通り、AS の 4 テーブルが作成された。
+- **フル一周 ALL GREEN**(httpx スクリプト、実測タイミング):
+
+  | ステップ | 実測 |
+  |---|---|
+  | sign-up(wasm `hashlib.scrypt`、OWASP N=2^17) | 497.9 ms |
+  | DCR(RFC 7591) | 12.8 ms |
+  | authorize → 302 consent(署名 cookie) | 18.5 ms |
+  | consent → code | 20.1 ms |
+  | token 交換(PKCE 検証 + D1 書き込み) | 19.7 ms |
+  | GET /protected(Bearer 検証、resource 束縛) | 11.1 ms |
+  | refresh rotation | 20.3 ms |
+
+- 無トークンは 401。**refresh reuse → `invalid_grant` + family 失効**(rotation 後の
+  access token も 401)が workerd + D1 上でも成立(RFC 9700 防御の実機確認)。
+- **プロセス再起動をまたいで access token が有効のまま**(再起動後、発行済みトークンで
+  /protected → 200)。本番実測(kdf.md 発見 5)の isolate 揮発問題が、AS モードでは
+  D1 永続で解決されていることの直接の証拠。
+- Windows の pywrangler 罠 2(vendor の静かな失敗 → `ModuleNotFoundError`)は
+  **workers-py 1.15.0 でも残存**。kdf.md の手動 vendor 手順(`uv pip install --python
+  .venv --target python_modules --no-build -r pylock.toml --preview-features pylock` +
+  `.synced` touch)で回避。罠 1(UV env 前置)も引き続き必要。
+
+## 4. 未実測(正直に)
 
 - **Inspector Web UI のブラウザ内 OAuth フロー**は未実測(このセッションの環境では
   ブラウザ操作パネルが使えなかったため CLI + Bearer で代替)。ただしブラウザ相当の
   hop(login → consent → callback)は §1 の SDK E2E が同一プロトコル実装で通している。
   UI での目視一周は次回セッションの宿題(起動手順: `uv run uvicorn app:app --port 8931`
   + `npx @modelcontextprotocol/inspector`、demo@example.com / demo password 42)。
-- **workerd(Workers)上の AS モード**は未実測。コアは stdlib のみ
-  (hashlib/hmac/secrets/json)なので KDF spike(kdf.md)の結果から動く見込みだが、
-  D1 adapter との組み合わせ実測をしてから README で謳う。
+- **mcp SDK 込みの 1 アプリを workerd に載せる統合**(examples/mcp-oauth 相当の Workers 版)
+  は未実測。AS 側(§3)と mcp の Workers stateless 経路(mcp research/pyodide.md)は
+  それぞれ実証済みなので、残るのは bundle 統合のみ。証拠が要るのは D1 共有と依存サイズ。

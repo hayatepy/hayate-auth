@@ -1,0 +1,9 @@
+name = "hayate-auth-as-spike"
+main = "entry.py"
+compatibility_date = "2026-07-01"
+compatibility_flags = ["python_workers"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "AUTH_DB"
+database_id = "as-spike-local"

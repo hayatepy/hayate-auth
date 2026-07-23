@@ -1,0 +1,23 @@
+lock-version = "1.0"
+created-by = "uv"
+requires-python = ">=3.13.2"
+
+[[packages]]
+name = "hayate"
+version = "0.8.0"
+wheels = [{ url = "https://files.pythonhosted.org/packages/e2/da/bb7253c59b1f4acc48d00ebac23ece309b38fc10e208e0714949b67d1b19/hayate-0.8.0-py3-none-any.whl", upload-time = 2026-07-22T16:15:57Z, size = 63166, hashes = { sha256 = "63bb1757159c86680015da1745614026c5ae0f9ea7b4d5ec2bec394c6fac9cae" } }]
+
+[[packages]]
+name = "hayate-auth"
+version = "0.6.0"
+wheels = [{ url = "https://files.pythonhosted.org/packages/84/13/fb1d3b4ea4f0ca7f35f4f2220390e6d7af623eca3dbff86c32ea50522349/hayate_auth-0.6.0-py3-none-any.whl", upload-time = 2026-07-22T22:03:11Z, size = 41578, hashes = { sha256 = "c204dfb28fed9bc535157f6c5cfb250053bbf5d76d6523ba0d72082e7e594547" } }]
+
+[[packages]]
+name = "hayate-fetch"
+version = "0.1.0"
+wheels = [{ url = "https://files.pythonhosted.org/packages/7b/a3/374051fcc54f7742fcaf2a237b782525efc6bf6aa18d28ec75b35ea40177/hayate_fetch-0.1.0-py3-none-any.whl", upload-time = 2026-07-22T19:37:53Z, size = 4788, hashes = { sha256 = "16d4d95884367c3e9065946a5b947a6935c0c49a34cbcc6a3b4815feaa404302" } }]
+
+[[packages]]
+name = "workers-runtime-sdk"
+version = "1.6.3"
+wheels = [{ url = "https://files.pythonhosted.org/packages/b7/66/71a67674314fcc78709bfe6dc2ac6739d8411515afd3e532157376bd722d/workers_runtime_sdk-1.6.3-py3-none-any.whl", upload-time = 2026-07-17T08:24:11Z, size = 32252, hashes = { sha256 = "d0645a1a03c3422c8a9cac33577ae73c76f02d390df20261d4c11d60cff057f9" } }]

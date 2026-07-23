@@ -1,0 +1,8 @@
+[project]
+name = "hayate-auth-as-spike"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = ["hayate>=0.8.0", "hayate-auth>=0.6.0"]
+
+[dependency-groups]
+dev = ["workers-py"]
