@@ -167,15 +167,26 @@ mcp 込み bundle(hayate-auth 0.7.0 + hayate-mcp 0.6.0 + mcp 1.12.4、python_mod
   vendored pydantic / pydantic-core を bundle から外しランタイム内蔵に任せても
   (ModuleNotFound は出ない = 内蔵解決自体は機能)、残りの純 Python チェーン
   (mcp / anyio / httpx / starlette / jsonschema / rpds)だけで startup 予算を超える。
-- **結論: mcp SDK は 2026-07 時点の本番 Cloudflare Python Workers に載らない**
-  (ローカル workerd では両方式とも動くのと対照的)。mcp research/pyodide.md の
-  「Workers 本番のコールドスタート未検証」への確定回答。
-- 残る未検証 1 つ: **Workers Paid 反映後**に `[limits] cpu_ms` を上げた遅延 import 版
-  (ランタイムリミッターが cpu_ms に追従するなら通る)。Paid の反映を確認してから
-  1 実験で決着する。※この検証時点ではアカウントは Free のまま
-  (`CPU limits are not supported for the Free plan` で cpu_ms 設定を拒否された)。
-- 本番 Worker の現状: mcp 込み・遅延 import 版がデプロイされたまま —
-  **AS 部分(metadata / oauth2 / protected)は全部動く**。/mcp 系のみ 500。
+- ~~結論: mcp SDK は 2026-07 時点の本番 Cloudflare Python Workers に載らない~~
+  **↑は Free プラン限定の結論だった。決着(同日、Workers Paid で再実測)は次のとおり**:
+- **Workers Paid なら遅延 import の mcp チェーンはそのまま本番で完走する**。
+  Python Workers のランタイム CPU リミッターはプラン準拠(Free ~2 s / Paid は
+  既定予算で足りる — `[limits] cpu_ms = 300000` 明示でも未設定でも 200)。
+  グローバル import の startup 予算超過(Top-level await unsettled)だけは
+  プラン非依存で残るため、**本番の正解形 = 遅延 import + Workers Paid**。
+- 余談(切り分けに時間を食った罠): 「Paid にしたのに Free と言われ続けた」の正体は
+  **アカウント違い** — Paid を購入したのは個人アカウント(yusuke8h@gmail.com)、
+  deploy 先は別アカウントだった。`wrangler whoami` のアカウント ID と課金画面の
+  アカウントを突き合わせること。
+- **本番フル一周 ALL GREEN**(https://hayate-auth-as-spike.yusuke8h.workers.dev、
+  実 D1、HTTPS、Workers Paid):
+  - PRM(RFC 9728 inserted path)cold **3.6〜7.4 s**(isolate 初回に mcp import
+    ~3 s CPU が乗る。AS-only ルートは従来どおり数十 ms)
+  - AS フロー(sign-up → DCR → authorize → consent → token、resource=/mcp)緑
+  - Bearer initialize → `protocolVersion 2025-06-18`(SDK 1.12.4)
+  - **MCP Inspector CLI の tools/call 成功**(`echo: production edge, oauth + mcp,
+    one worker`)、無トークンは 401
+  - 「MCP サーバー + その認可サーバーを 1 つの Worker で」が**本番 edge で完全達成**。
 
 ## 6. 未実測(正直に)
 
@@ -184,6 +195,6 @@ mcp 込み bundle(hayate-auth 0.7.0 + hayate-mcp 0.6.0 + mcp 1.12.4、python_mod
   hop(login → consent → callback)は §1 の SDK E2E が同一プロトコル実装で通している。
   UI での目視一周は人間の手で 5 分の宿題(起動手順: `uv run uvicorn app:app --port 8931`
   + `npx @modelcontextprotocol/inspector`、demo@example.com / demo password 42)。
-- **MCP+AS 込みの本番**: §5.5 で「サイズは通るが import が载らない」ことを確定。
-  残るのは Paid 反映後の cpu_ms 実験 1 つのみ。根本解は Cloudflare 側の
-  パッケージスナップショット拡充(mcp チェーンの内蔵化)か Pyodide の高速化待ち。
+- ~~MCP+AS 込みの本番~~ **達成(§5.5 決着)**: 遅延 import + Workers Paid で本番フル一周緑。
+  cold の mcp import ~3 s CPU を消したければ Cloudflare のパッケージ内蔵拡充
+  (mcp チェーンのスナップショット化)待ち。
