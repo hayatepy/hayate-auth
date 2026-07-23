@@ -4,6 +4,12 @@ Findings land in docs/research/authorization-server.md. This is the
 edge-complete form of the story: hayate-auth issues OAuth tokens, the
 hayate-mcp mount verifies them, both in a single workerd isolate over D1.
 
+Everything env-dependent is built lazily on the first request: deployed
+Workers run the global scope through a deploy-time validator that has NO
+bindings or vars attached (production finding: module-level ``env.DB``
+fails validation with ``AttributeError: DB``), while local ``pywrangler
+dev`` tolerates global access — a real trap.
+
 Repro (Windows: run from a C: copy — pywrangler traps in research/kdf.md;
 mcp needs the wasm-platform manual vendor from hayate-mcp research/pyodide.md):
 
@@ -17,6 +23,10 @@ mcp needs the wasm-platform manual vendor from hayate-mcp research/pyodide.md):
       -r pylock.toml --preview-features pylock
     printf '1.15.0' > python_modules/.synced && printf '1.15.0' > .venv-workers/.synced
     UV_PYTHON_DOWNLOADS=automatic UV_PYTHON_PREFERENCE=managed uv run pywrangler dev
+
+Production: create a real D1, point wrangler.toml at it, set
+``[vars] ISSUER = "https://<name>.<subdomain>.workers.dev"``, apply the
+schema with ``--remote``, then ``uv run pywrangler deploy``.
 """
 
 from hayate import Context, Hayate
@@ -26,32 +36,49 @@ from workers import env
 from hayate_auth import Auth, AuthorizationServer
 from hayate_auth.adapters.d1 import D1Adapter
 
-ISSUER = "http://127.0.0.1:8787"
-MCP_RESOURCE = f"{ISSUER}/mcp"
-
-auth = Auth(
-    secret="spike-secret-not-for-production",
-    adapter=D1Adapter(env.DB),
-    authorization_server=AuthorizationServer(
-        issuer=ISSUER,
-        login_url="/login",
-        consent_url="/consent",
-        scopes_supported=("mcp",),
-    ),
-)
-
 app = Hayate()
-auth.register(app)
+
+_auth: Auth | None = None
+
+
+def get_auth() -> Auth:
+    global _auth
+    if _auth is None:
+        issuer = getattr(env, "ISSUER", None) or "http://127.0.0.1:8787"
+        _auth = Auth(
+            secret="spike-secret-not-for-production",
+            adapter=D1Adapter(env.DB),
+            authorization_server=AuthorizationServer(
+                issuer=issuer,
+                login_url="/login",
+                consent_url="/consent",
+                scopes_supported=("mcp",),
+            ),
+        )
+    return _auth
+
+
+@app.on("GET", "/api/auth/*")
+@app.on("POST", "/api/auth/*")
+async def auth_routes(c: Context):
+    return await get_auth().fetch(c.req)
+
+
+@app.get("/.well-known/oauth-authorization-server")
+async def as_metadata(c: Context):
+    return await get_auth().fetch(c.req)
 
 
 @app.get("/protected")
 async def protected(c: Context):
     """A bare Bearer-protected route (the §3 measurement), kept for contrast."""
+    auth = get_auth()
+    issuer = auth.authorization_server.issuer
     header = c.req.headers.get("authorization") or ""
     scheme, _, credential = header.partition(" ")
     claims = None
     if scheme.lower() == "bearer" and credential:
-        claims = await auth.verify_oauth_token(credential.strip(), resource=f"{ISSUER}/protected")
+        claims = await auth.verify_oauth_token(credential.strip(), resource=f"{issuer}/protected")
     if claims is None:
         return c.json({"title": "Authorization required"}, status=401)
     return c.json({"ok": True, "user_id": claims["user_id"], "scopes": claims["scopes"]})
@@ -92,14 +119,17 @@ def get_mount():
 
     mount = getattr(app, "_mcp_mount", None)
     if mount is None:
+        auth = get_auth()
+        issuer = auth.authorization_server.issuer
+        resource = f"{issuer}/mcp"
         mount = McpMount(
             build_server(),
             path="/mcp",
             stateless=True,
             authorization=Authorization(
-                resource=MCP_RESOURCE,
-                authorization_servers=[ISSUER],
-                verify_token=auth.oauth_token_verifier(resource=MCP_RESOURCE),
+                resource=resource,
+                authorization_servers=[issuer],
+                verify_token=auth.oauth_token_verifier(resource=resource),
                 scopes_supported=["mcp"],
             ),
         )

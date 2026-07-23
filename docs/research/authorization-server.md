@@ -105,12 +105,58 @@ serve するのは常にルートの `/.well-known/oauth-protected-resource`。*
 uvicorn 側も examples/mcp-oauth の E2E を mcp 0.6.0 で再実行して緑
 (SDK クライアントの一周 + 広告 URL 一致のアサーション追加)。
 
-## 5. 未実測(正直に)
+## 5. Workers 本番 deploy 実測(2026-07-23、AS-only)
+
+`pywrangler deploy` 相当を実アカウント(無料プラン)で実施。
+URL: https://hayate-auth-as-spike.digiman-haya-labs.workers.dev(実 D1
+`hayate-as-spike`、schema は `wrangler d1 execute --remote --file` で適用)。
+
+**本番でだけ判った罠 4 つ**(いずれもローカル workerd では顕在化しない):
+
+1. **deploy 時の validator はグローバルスコープを bindings / vars なしで実行する**。
+   モジュールトップの `D1Adapter(env.DB)` は `AttributeError: DB` で validation 失敗
+   (vars も同様に未接続で、`getattr(env, "ISSUER", None)` は None に落ちる)。
+   → Auth / mount の構築は**初回リクエスト時に遅延**が必須。ローカル dev は
+   グローバルアクセスを許すため、dev 緑 → deploy 赤の罠になる。
+2. **無料プランの Worker サイズ上限 3 MiB に mcp 込み bundle は載らない**
+   (wasm `pydantic_core` .so 単体で 4 MiB、全体 44 MiB / gzip 前)。
+   AS-only(hayate + hayate-auth + hayate-fetch、pure wheel、python_modules 588 KiB)
+   は問題なく載る。**MCP+AS 込みの本番は Workers Paid(上限 10 MiB)で要再検証**
+   (gzip 後に収まるかは未検証のまま)。
+3. **pywrangler deploy は `.venv` / `.venv-workers` を bundle に巻き込む**
+   (AS-only でも 1995 modules / 18 MiB になり 3 MiB 超過)。回避: entry.py +
+   wrangler.toml + python_modules だけのクリーンディレクトリから素の
+   `npx wrangler deploy`。
+4. workers.dev のサブドメインはアカウント毎(このアカウントは
+   `digiman-haya-labs`)。`[vars] ISSUER` は初回 deploy で URL を確認してから確定。
+
+**フル AS フロー ALL GREEN(本番 edge、実 D1、HTTPS)**:
+
+| ステップ | 実測(初回、cold start 含む) |
+|---|---|
+| sign-up(wasm scrypt **log_n=14** — 無料プラン CPU 対策の spike 用低コスト) | 1940.6 ms |
+| DCR | 37.8 ms |
+| authorize → 302 consent | 62.0 ms |
+| consent → code | 98.4 ms |
+| token 交換(PKCE + 実 D1 書き込み) | 94.5 ms |
+| GET /protected(Bearer) | 25.3 ms |
+| refresh rotation | 88.9 ms |
+
+- 無トークン 401 / refresh reuse → family 失効も実 D1 上で成立。
+- HTTPS なので **`__Host-` プレフィックス + Secure cookie の経路が初めて本物**
+  (セッション cookie・authorize の署名 pending cookie とも)。httpx の jar 経由で
+  全フローが通った = 属性が正しく機能。
+- KDF の本番既定コスト(N=2^17)は無料プランで確率的 exceededCpu(kdf.md 実測済み)
+  のため、この spike は log_n=14 で AS フロー自体の検証に集中した。
+  **認証エンドポイントの本番は有料プラン前提**という docs の前提は変わらない。
+
+## 6. 未実測(正直に)
 
 - **Inspector Web UI のブラウザ内 OAuth フロー**は未実測(このセッションの環境では
   ブラウザ操作パネルが使えなかったため CLI + Bearer で代替)。ただしブラウザ相当の
   hop(login → consent → callback)は §1 の SDK E2E が同一プロトコル実装で通している。
   UI での目視一周は次回セッションの宿題(起動手順: `uv run uvicorn app:app --port 8931`
   + `npx @modelcontextprotocol/inspector`、demo@example.com / demo password 42)。
-- **Workers 本番(`pywrangler deploy`)での MCP+AS**: ローカル workerd では緑。本番は
-  CPU 課金(scrypt ~0.5–1 s / sign-up・sign-in のみ)と D1 実体で確認してから謳う。
+- **MCP+AS 込みの本番 deploy**: AS-only は §5 で本番緑。mcp 込み bundle は無料プランの
+  3 MiB を超える(§5 罠 2)。Workers Paid(10 MiB)にすれば試せるが、gzip 後に
+  収まるかは未検証 — プラン変更は課金判断なので保留。
