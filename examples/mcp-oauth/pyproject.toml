@@ -2,7 +2,7 @@
 name = "hayate-auth-mcp-oauth-example"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["hayate>=0.8.0", "hayate-auth", "hayate-mcp>=0.6.0"]
+dependencies = ["hayate>=0.10.0", "hayate-auth", "hayate-mcp>=0.6.0"]
 
 [tool.uv.sources]
 hayate-auth = { path = "../..", editable = true }
