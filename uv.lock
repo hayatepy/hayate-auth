@@ -233,11 +233,14 @@ wheels = [
 
 [[package]]
 name = "hayate"
-version = "0.8.0"
+version = "0.10.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ae/d4/be6689efdba8dfa972b5fdad67adc62c12c42ada440b6b5e8cf044a87d68/hayate-0.8.0.tar.gz", hash = "sha256:96b91b582787099f2752dd8411c5cc21039fe10ab85f5582a18e27a233227791", size = 47292, upload-time = "2026-07-22T16:15:58.761Z" }
+dependencies = [
+    { name = "uts46" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/37/27/b0bdc3acfaaa7c96116c0f8be45a797868d715df5fe5d094d935e681fbde/hayate-0.10.0.tar.gz", hash = "sha256:ad3dddaf60afe63c305a848f086d2998f7ec91fc303fa4f0fdd45e3052118f28", size = 48267, upload-time = "2026-07-24T15:27:09.986Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e2/da/bb7253c59b1f4acc48d00ebac23ece309b38fc10e208e0714949b67d1b19/hayate-0.8.0-py3-none-any.whl", hash = "sha256:63bb1757159c86680015da1745614026c5ae0f9ea7b4d5ec2bec394c6fac9cae", size = 63166, upload-time = "2026-07-22T16:15:57.551Z" },
+    { url = "https://files.pythonhosted.org/packages/3a/e8/3b93a264ec8376f75e6a33b9799d6832768276808b886877ccf256e437bf/hayate-0.10.0-py3-none-any.whl", hash = "sha256:ba053829f63f123ffa83aad5ee2d389cd5f15cc7bf43f7bd5f0770f86dfb0648", size = 64125, upload-time = "2026-07-24T15:27:08.502Z" },
 ]
 
 [[package]]
@@ -557,6 +560,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f6/cc/6253133b5bb138fc3306cebfbda2c520f545d36b5be2c7255cc528bb45d6/typing_extensions-4.16.0.tar.gz", hash = "sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5", size = 113555, upload-time = "2026-07-02T08:40:05.92Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/typing_extensions-4.16.0-py3-none-any.whl", hash = "sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8", size = 45571, upload-time = "2026-07-02T08:40:04.659Z" },
+]
+
+[[package]]
+name = "uts46"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/23/11/a9b7f1378a55adc48bcaf8ad4598c94a69e5ba1abfa777ee453e7f86c25f/uts46-0.2.0.tar.gz", hash = "sha256:64a992b4ed2ba2b07c7f66159e914b04566a8d064da6315336d56fb11a13c2c8", size = 67729, upload-time = "2025-03-25T21:30:03.3Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7c/f9/d4a33ea9c418614a24aa4a6e2ff48c1fd6fbdadfc09d4d4b7aeafb0d8c2c/uts46-0.2.0-py3-none-any.whl", hash = "sha256:78faa09204bba3496b12178ddae48e547393afddc591f3c42fe273a10ba8a6a3", size = 56001, upload-time = "2025-03-25T21:30:01.738Z" },
 ]
 
 [[package]]
