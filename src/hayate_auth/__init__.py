@@ -15,7 +15,7 @@ from .oauth import OAuthProvider, github, google
 from .passkey import PasskeyConfig
 from .plugin import AuthPlugin
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"
 
 __all__ = [
     "Adapter",
