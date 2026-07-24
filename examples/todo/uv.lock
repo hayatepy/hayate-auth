@@ -65,7 +65,7 @@ provides-extras = ["passkey"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "mypy", specifier = ">=1.18" },
+    { name = "mypy", specifier = ">=2.3.0" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-asyncio", specifier = ">=0.25" },
     { name = "ruff", specifier = ">=0.9" },
