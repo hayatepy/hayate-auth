@@ -33,7 +33,7 @@ Changelog = "https://github.com/hayatepy/hayate-auth/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [
-  "mypy>=1.18",
+  "mypy>=2.3.0",
   "pytest>=8.3",
   "pytest-asyncio>=0.25",
   "ruff>=0.9",
