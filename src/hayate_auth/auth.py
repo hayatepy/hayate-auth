@@ -14,6 +14,7 @@ from . import session as sessions
 from .adapter import Adapter, Where
 from .authorization_server import WELL_KNOWN_PATH
 from .crypto import CryptoBackend, default_backend
+from .principal import bearer_middleware
 from .routes import ROUTES, public_user
 
 
@@ -61,6 +62,10 @@ class Auth:
         # AS mode (v0.6): an AuthorizationServer config, or None. When set,
         # the OAuth 2.1 endpoints and the RFC 8414 well-known route go live.
         self.authorization_server = authorization_server
+        if authorization_server is not None and not callable(getattr(adapter, "update_many", None)):
+            raise TypeError(
+                "authorization-server mode requires an adapter with atomic update_many()"
+            )
         # Passkeys (v0.7): a PasskeyConfig, or None -> routes answer 404.
         self.passkey = passkey
         # Route table = built-ins + built-in plugins + user plugins
@@ -103,7 +108,10 @@ class Auth:
         handler = self._routes.get((raw.method, sub))
         if handler is None:
             return problem(404, title="Not Found")
-        return await handler(self, raw)
+        response = await handler(self, raw)
+        if not isinstance(response, Response):
+            raise TypeError("auth route handlers must return Response")
+        return response
 
     # -- sugar -------------------------------------------------------------------------
 
@@ -112,7 +120,7 @@ class Auth:
         (better-auth's Hono recipe, DESIGN §3.2)."""
 
         async def auth_handler(c: Context) -> Response:
-            return await self.fetch(c.req)
+            return await self.fetch(c.req.raw)
 
         pattern = f"{self.base_path}/*"
         app.on("GET", pattern)(auth_handler)
@@ -133,9 +141,39 @@ class Auth:
             user, record = resolved
             c.set("user", user)
             c.set("session", record)
+            c.set(
+                "principal",
+                {
+                    "subject": user["id"],
+                    "user_id": user["id"],
+                    "scopes": [],
+                    "credential_type": "session",
+                },
+            )
             await next_()
 
+        require_session_middleware.__openapi_security__ = [  # type: ignore[attr-defined]
+            {"SessionCookie": []}
+        ]
         return require_session_middleware
+
+    def require_api_key(self, *required_scopes: str) -> Middleware:
+        """Require a Bearer API key and expose ``c.get("principal")``."""
+        return bearer_middleware(
+            self.verify_api_key,
+            required_scopes=required_scopes,
+            credential_type="api_key",
+            scheme_name="ApiKeyBearer",
+        )
+
+    def require_oauth_token(self, *required_scopes: str, resource: str | None = None) -> Middleware:
+        """Require an AS-mode Bearer token, optional resource, and scopes."""
+        return bearer_middleware(
+            self.oauth_token_verifier(resource=resource),
+            required_scopes=required_scopes,
+            credential_type="oauth",
+            scheme_name="OAuth2",
+        )
 
     async def get_session(self, request: Request) -> tuple[dict[str, Any], dict[str, Any]] | None:
         """(public user, public session) for the request's cookie, or None."""
@@ -175,6 +213,37 @@ class Auth:
             return await self.verify_oauth_token(token, resource=resource)
 
         return verify
+
+    def openapi_security_schemes(self) -> dict[str, dict[str, Any]]:
+        """Security schemes matching ``require_*`` middleware annotations."""
+        from .session import HOST_COOKIE
+
+        schemes: dict[str, dict[str, Any]] = {
+            "SessionCookie": {
+                "type": "apiKey",
+                "in": "cookie",
+                "name": HOST_COOKIE,
+            },
+            "ApiKeyBearer": {
+                "type": "http",
+                "scheme": "bearer",
+                "description": "hayate-auth API key",
+            },
+        }
+        config = self.authorization_server
+        if config is not None:
+            base = config.issuer + self.base_path
+            schemes["OAuth2"] = {
+                "type": "oauth2",
+                "flows": {
+                    "authorizationCode": {
+                        "authorizationUrl": f"{base}/oauth2/authorize",
+                        "tokenUrl": f"{base}/oauth2/token",
+                        "scopes": {scope: scope for scope in config.scopes_supported},
+                    }
+                },
+            }
+        return schemes
 
     # -- internals ---------------------------------------------------------------------
 

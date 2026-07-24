@@ -2,7 +2,8 @@
 
 The complete AS-mode story (DESIGN §19): hayate-mcp serves MCP and acts as
 the OAuth resource server (RFC 9728), hayate-auth issues the tokens (OAuth
-2.1 + PKCE, RFC 8414 metadata, RFC 7591 dynamic client registration), and
+2.1 + PKCE, RFC 8414 metadata, RFC 7591 dynamic client registration, and
+strict RFC 8707 resource binding), and
 the splice between them is one line:
 
 ```python

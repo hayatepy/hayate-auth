@@ -32,6 +32,26 @@ async def test_crud_round_trip(adapter):
     assert await adapter.find_one("user", [Where("id", "u1")]) is None
 
 
+async def test_update_many_is_a_guarded_atomic_transition(adapter):
+    await make_user(adapter, 1)
+    assert (
+        await adapter.update_many(
+            "user",
+            [Where("id", "u1"), Where("email_verified", 0)],
+            {"email_verified": 1},
+        )
+        == 1
+    )
+    assert (
+        await adapter.update_many(
+            "user",
+            [Where("id", "u1"), Where("email_verified", 0)],
+            {"email_verified": 1},
+        )
+        == 0
+    )
+
+
 async def test_operators_and_sort_and_limit(adapter):
     for i in range(1, 4):
         await make_user(adapter, i)

@@ -2,6 +2,33 @@
 
 All notable changes to hayate-auth are documented here.
 
+## [0.8.0] - 2026-07-24
+
+### Added
+
+- Add MCP 2025-11-25 Client ID Metadata Document discovery with injected
+  fetching, URL policy hooks, bounded JSON documents, public-client
+  validation, caching, and discovery metadata.
+- Add a common `Principal`, RFC 6750 Bearer middleware, scoped API-key and
+  OAuth-token guards, OpenAPI security-scheme export, and `LazyAuth` for
+  request-bound Workers resources.
+- Add strict RFC 8707 MCP resource binding across authorization, code
+  exchange, refresh, and token verification.
+
+### Changed
+
+- Authorization-code consumption and refresh-token rotation now use a single
+  guarded database update, following better-auth's atomic credential
+  consumption model. Custom adapters used in authorization-server mode must
+  implement `update_many()` and return the affected-row count.
+- MCP-mode issuers, resources, and redirect URIs now require HTTPS outside
+  loopback development.
+- Harden OAuth endpoint parsing: token requests require form encoding,
+  registration requires JSON, unsupported client-auth schemes are rejected,
+  and issuer/resource/redirect URIs cannot contain credentials or malformed
+  authorities.
+- Mark the distribution as typed and run strict mypy validation in CI.
+
 ## [0.7.1] - 2026-07-24
 
 ### Changed

@@ -9,6 +9,7 @@ function.
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from hayate import Headers, Request, Response, problem
@@ -236,13 +237,16 @@ async def get_session(auth: Auth, request: Request) -> Response:
     return _json_response({"session": record, "user": user})
 
 
-def _lazy(module: str, name: str):
+def _lazy(module: str, name: str) -> Callable[[Auth, Request], Awaitable[Response]]:
     """Route entry that imports its handler on first call (avoids import cycles)."""
     import importlib
 
-    def entry(auth: Auth, request: Request) -> Any:
+    async def entry(auth: Auth, request: Request) -> Response:
         handler = getattr(importlib.import_module(f".{module}", __package__), name)
-        return handler(auth, request)
+        result = await handler(auth, request)
+        if not isinstance(result, Response):
+            raise TypeError(f"auth route {module}.{name} did not return a Response")
+        return result
 
     return entry
 

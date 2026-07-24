@@ -119,6 +119,8 @@ async def register_options(auth: Auth, request: Request) -> Response:
     wa = _gate(auth)
     if isinstance(wa, Response):
         return wa
+    config = auth.passkey
+    assert config is not None
     resolved = await auth.get_session(request)
     if resolved is None:
         return problem(401, title="Authentication required")
@@ -129,8 +131,8 @@ async def register_options(auth: Auth, request: Request) -> Response:
 
     existing = await auth.adapter.find_many("passkey", [Where("user_id", user["id"])])
     options = wa.generate_registration_options(
-        rp_id=auth.passkey.rp_id,
-        rp_name=auth.passkey.rp_name,
+        rp_id=config.rp_id,
+        rp_name=config.rp_name,
         user_id=user["id"].encode("ascii"),
         user_name=user["email"],
         user_display_name=user.get("name") or user["email"],
@@ -155,6 +157,8 @@ async def verify_registration(auth: Auth, request: Request) -> Response:
     wa = _gate(auth)
     if isinstance(wa, Response):
         return wa
+    config = auth.passkey
+    assert config is not None
     resolved = await auth.get_session(request)
     if resolved is None:
         return problem(401, title="Authentication required")
@@ -176,8 +180,8 @@ async def verify_registration(auth: Auth, request: Request) -> Response:
         verification = wa.verify_registration_response(
             credential=data.get("response"),
             expected_challenge=wa.base64url_to_bytes(stored["challenge"]),
-            expected_origin=auth.passkey.origin,
-            expected_rp_id=auth.passkey.rp_id,
+            expected_origin=config.origin,
+            expected_rp_id=config.rp_id,
         )
     except InvalidRegistrationResponse as exc:
         return problem(400, title=f"Passkey registration failed: {exc}")
@@ -208,6 +212,8 @@ async def authenticate_options(auth: Auth, request: Request) -> Response:
     wa = _gate(auth)
     if isinstance(wa, Response):
         return wa
+    config = auth.passkey
+    assert config is not None
     data = await _read_json_object(request)
     if isinstance(data, Response):
         return data
@@ -231,7 +237,7 @@ async def authenticate_options(auth: Auth, request: Request) -> Response:
         # defense §9): an empty allow list means discoverable credentials.
 
     options = wa.generate_authentication_options(
-        rp_id=auth.passkey.rp_id, allow_credentials=allow or None
+        rp_id=config.rp_id, allow_credentials=allow or None
     )
     cookie = _challenge_cookie(
         auth,
@@ -245,6 +251,8 @@ async def verify_authentication(auth: Auth, request: Request) -> Response:
     wa = _gate(auth)
     if isinstance(wa, Response):
         return wa
+    config = auth.passkey
+    assert config is not None
     data = await _read_json_object(request)
     if isinstance(data, Response):
         return data
@@ -265,8 +273,8 @@ async def verify_authentication(auth: Auth, request: Request) -> Response:
         verification = wa.verify_authentication_response(
             credential=credential,
             expected_challenge=wa.base64url_to_bytes(stored["challenge"]),
-            expected_origin=auth.passkey.origin,
-            expected_rp_id=auth.passkey.rp_id,
+            expected_origin=config.origin,
+            expected_rp_id=config.rp_id,
             credential_public_key=wa.base64url_to_bytes(row["public_key"]),
             credential_current_sign_count=row["counter"],
         )

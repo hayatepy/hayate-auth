@@ -5,16 +5,24 @@ matching (+ loopback ports), single-use codes with family revocation,
 refresh rotation with reuse detection, and RFC 8707 resource binding.
 """
 
+import asyncio
 import base64
 import hashlib
+import json
 from datetime import timedelta
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 import pytest
-from hayate import Request
+from hayate import Request, Response
 
 from conftest import cookie_pair, request_json
-from hayate_auth import Auth, AuthorizationServer, ScryptBackend
+from hayate_auth import (
+    Auth,
+    AuthorizationServer,
+    ClientIdMetadataDocuments,
+    ScryptBackend,
+    Where,
+)
 
 BASE = "/api/auth"
 
@@ -166,6 +174,173 @@ async def test_well_known_metadata(auth_as):
     assert doc["response_types_supported"] == ["code"]
 
 
+async def test_client_id_metadata_document_flow_and_discovery(adapter):
+    client_id = "https://client.example/metadata.json"
+    redirect_uri = "http://127.0.0.1:43210/callback"
+    fetched: list[str] = []
+    metadata = {
+        "client_id": client_id,
+        "client_name": "MCP Test Client",
+        "redirect_uris": [redirect_uri],
+        "token_endpoint_auth_method": "none",
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "scope": "mcp",
+    }
+
+    async def fetch_document(url: str) -> Response:
+        fetched.append(url)
+        return Response(
+            json.dumps(metadata),
+            headers={"content-type": "application/json"},
+        )
+
+    resource = "https://mcp.example.com/mcp"
+    auth = make_auth(
+        adapter,
+        resource=resource,
+        scopes_supported=("mcp",),
+        client_id_metadata_documents=ClientIdMetadataDocuments(fetch_document),
+    )
+    discovery_response = await auth.fetch(
+        Request("http://localhost/.well-known/oauth-authorization-server")
+    )
+    discovery = await discovery_response.json()
+    assert discovery["client_id_metadata_document_supported"] is True
+
+    cookie = await signed_in_cookie(auth)
+    client = {"client_id": client_id, "redirect_uris": [redirect_uri]}
+    verifier = "cimd-code-verifier-with-sufficient-length-42"
+    code = await obtain_code(
+        auth,
+        cookie,
+        client,
+        verifier=verifier,
+        scope="mcp",
+        resource=resource,
+    )
+    tokens = await exchange(
+        auth,
+        client,
+        code,
+        verifier=verifier,
+        resource=resource,
+    )
+    assert tokens.status == 200, await tokens.text()
+    assert await auth.verify_oauth_token((await tokens.json())["access_token"], resource=resource)
+    assert fetched == [client_id]
+
+    stored = await adapter.find_one("oauth_client", [Where("client_id", client_id)])
+    assert stored is not None
+    assert stored["client_secret_hash"] is None
+    assert stored["name"] == "MCP Test Client"
+
+
+@pytest.mark.parametrize(
+    ("client_id", "metadata"),
+    [
+        (
+            "https://client.example/metadata.json",
+            {
+                "client_id": "https://wrong.example/metadata.json",
+                "client_name": "Mismatch",
+                "redirect_uris": ["https://wrong.example/callback"],
+            },
+        ),
+        (
+            "https://client.example/metadata.json",
+            {
+                "client_id": "https://client.example/metadata.json",
+                "client_name": "Secret client",
+                "redirect_uris": ["https://client.example/callback"],
+                "client_secret": "must-not-be-accepted",
+            },
+        ),
+        (
+            "https://client.example/metadata.json",
+            {
+                "client_id": "https://client.example/metadata.json",
+                "client_name": "Cross-origin redirect",
+                "redirect_uris": ["https://attacker.example/callback"],
+            },
+        ),
+    ],
+)
+async def test_invalid_client_id_metadata_documents_are_rejected(adapter, client_id, metadata):
+    async def fetch_document(url: str) -> Response:
+        return Response(json.dumps(metadata), headers={"content-type": "application/json"})
+
+    auth = make_auth(
+        adapter,
+        client_id_metadata_documents=ClientIdMetadataDocuments(fetch_document),
+    )
+    request = authorize_request(
+        {"client_id": client_id, "redirect_uris": ["https://client.example/callback"]},
+        verifier="cimd-code-verifier-with-sufficient-length-42",
+    )
+    response = await auth.fetch(request)
+    assert response.status == 400
+    assert await adapter.find_one("oauth_client", [Where("client_id", client_id)]) is None
+
+
+async def test_client_id_metadata_url_policy_runs_before_fetch(adapter):
+    fetched = False
+
+    async def fetch_document(url: str) -> Response:
+        nonlocal fetched
+        fetched = True
+        return Response("{}", headers={"content-type": "application/json"})
+
+    auth = make_auth(
+        adapter,
+        client_id_metadata_documents=ClientIdMetadataDocuments(
+            fetch_document,
+            allow_url=lambda url: False,
+        ),
+    )
+    client_id = "https://client.example/metadata.json"
+    response = await auth.fetch(
+        authorize_request(
+            {"client_id": client_id, "redirect_uris": ["https://client.example/callback"]},
+            verifier="cimd-code-verifier-with-sufficient-length-42",
+        )
+    )
+    assert response.status == 400
+    assert fetched is False
+
+
+async def test_client_id_metadata_document_size_and_content_type_are_bounded(adapter):
+    client_id = "https://client.example/metadata.json"
+
+    async def fetch_document(url: str) -> Response:
+        return Response(
+            b"{}",
+            headers={"content-type": "text/html", "content-length": "9999"},
+        )
+
+    auth = make_auth(
+        adapter,
+        client_id_metadata_documents=ClientIdMetadataDocuments(
+            fetch_document,
+            max_document_bytes=8,
+        ),
+    )
+    response = await auth.fetch(
+        authorize_request(
+            {"client_id": client_id, "redirect_uris": ["https://client.example/callback"]},
+            verifier="cimd-code-verifier-with-sufficient-length-42",
+        )
+    )
+    assert response.status == 400
+
+
+def test_openapi_oauth2_scheme_matches_authorization_server(auth_as):
+    scheme = auth_as.openapi_security_schemes()["OAuth2"]
+    flow = scheme["flows"]["authorizationCode"]
+    assert flow["authorizationUrl"] == "http://localhost/api/auth/oauth2/authorize"
+    assert flow["tokenUrl"] == "http://localhost/api/auth/oauth2/token"
+
+
 async def test_well_known_absent_without_as_mode(auth):
     res = await auth.fetch(Request("http://localhost/.well-known/oauth-authorization-server"))
     assert res.status == 404
@@ -181,6 +356,28 @@ def test_issuer_must_be_an_origin():
         AuthorizationServer(issuer="http://localhost/api", login_url="/l", consent_url="/c")
     with pytest.raises(ValueError):
         AuthorizationServer(issuer="localhost", login_url="/l", consent_url="/c")
+    with pytest.raises(ValueError):
+        AuthorizationServer(issuer="http://auth.example.com", login_url="/l", consent_url="/c")
+    with pytest.raises(ValueError):
+        AuthorizationServer(
+            issuer="https://user:password@auth.example.com",
+            login_url="/l",
+            consent_url="/c",
+        )
+    with pytest.raises(ValueError):
+        AuthorizationServer(
+            issuer="https://auth.example.com",
+            login_url="/l",
+            consent_url="/c",
+            resource="http://mcp.example.com/mcp",
+        )
+    with pytest.raises(ValueError):
+        AuthorizationServer(
+            issuer="https://auth.example.com",
+            login_url="/l",
+            consent_url="/c",
+            resource="https://user@mcp.example.com/mcp",
+        )
 
 
 # -- RFC 7591 dynamic client registration ------------------------------------------------
@@ -209,6 +406,9 @@ async def test_register_confidential_client_returns_secret_once(auth_as):
         [],
         ["http://evil.example/cb"],  # plain http on a non-loopback host
         ["https://client.example/cb#frag"],  # fragments are forbidden (RFC 6749 §3.1.2)
+        ["https:callback"],  # HTTPS URI must include an authority
+        ["https://user@client.example/cb"],
+        ["http://localhost:bad/cb"],
         ["javascript:alert(1)"],
     ],
 )
@@ -225,6 +425,35 @@ async def test_register_accepts_loopback_and_custom_schemes(auth_as):
         redirect_uris=["http://127.0.0.1/cb", "http://localhost:6274/cb", "com.example.app:/cb"],
     )
     assert len(client["redirect_uris"]) == 3
+
+
+async def test_register_requires_json_content_type(auth_as):
+    res = await auth_as.fetch(
+        Request(
+            f"http://localhost{BASE}/oauth2/register",
+            method="POST",
+            headers={"content-type": "text/plain"},
+            body=json.dumps({"redirect_uris": ["https://client.example/cb"]}),
+        )
+    )
+    assert res.status == 400
+    assert (await res.json())["error"] == "invalid_request"
+
+
+async def test_mcp_mode_rejects_custom_scheme_redirect(adapter):
+    auth = make_auth(adapter, resource="https://mcp.example.com/mcp")
+    res = await auth.fetch(
+        request_json(
+            f"{BASE}/oauth2/register",
+            {
+                "redirect_uris": ["com.example.app:/cb"],
+                "token_endpoint_auth_method": "none",
+                "grant_types": ["authorization_code"],
+            },
+        )
+    )
+    assert res.status == 400
+    assert (await res.json())["error"] == "invalid_redirect_uri"
 
 
 @pytest.mark.parametrize(
@@ -337,6 +566,26 @@ async def test_authorize_rejects_multiple_resources(auth_as):
     assert location_params(res.headers.get("location"))["error"] == "invalid_target"
 
 
+async def test_mcp_mode_requires_its_resource_on_authorize(adapter):
+    resource = "https://mcp.example.com/mcp"
+    auth = make_auth(adapter, resource=resource)
+    cookie = await signed_in_cookie(auth)
+    client = await register(auth)
+
+    missing = await auth.fetch(authorize_request(client, verifier="v" * 43, cookie=cookie))
+    assert location_params(missing.headers.get("location"))["error"] == "invalid_target"
+
+    wrong = await auth.fetch(
+        authorize_request(
+            client,
+            verifier="v" * 43,
+            cookie=cookie,
+            resource="https://other.example/mcp",
+        )
+    )
+    assert location_params(wrong.headers.get("location"))["error"] == "invalid_target"
+
+
 async def test_authorize_rejects_unknown_scope_when_configured(adapter):
     auth = make_auth(adapter, scopes_supported=("mcp", "profile"))
     client = await register(auth)
@@ -430,6 +679,30 @@ async def test_token_response_is_uncacheable(auth_as):
     assert res.headers.get("cache-control") == "no-store"
 
 
+async def test_token_requires_form_content_type_and_rejects_other_auth_schemes(auth_as):
+    malformed_body = await auth_as.fetch(
+        Request(
+            f"http://localhost{BASE}/oauth2/token",
+            method="POST",
+            headers={"content-type": "multipart/form-data; boundary=x"},
+            body=b"--x--\r\n",
+        )
+    )
+    assert malformed_body.status == 400
+    assert (await malformed_body.json())["error"] == "invalid_request"
+
+    client = await register(auth_as)
+    unsupported_auth = await auth_as.fetch(
+        request_form(
+            f"{BASE}/oauth2/token",
+            {"grant_type": "authorization_code", "client_id": client["client_id"]},
+            headers={"authorization": "Bearer not-client-auth"},
+        )
+    )
+    assert unsupported_auth.status == 401
+    assert (await unsupported_auth.json())["error"] == "invalid_client"
+
+
 async def test_token_rejects_wrong_pkce_verifier(auth_as):
     cookie = await signed_in_cookie(auth_as)
     client = await register(auth_as)
@@ -454,6 +727,21 @@ async def test_code_replay_revokes_the_tokens_it_issued(auth_as):
     assert (await replay.json())["error"] == "invalid_grant"
     # RFC 9700 §4.2: the replay burned everything the code had issued.
     assert await auth_as.verify_oauth_token(access) is None
+
+
+async def test_concurrent_code_exchange_mints_exactly_one_token_family(auth_as):
+    cookie = await signed_in_cookie(auth_as)
+    client = await register(auth_as)
+    verifier = "v" * 43
+    code = await obtain_code(auth_as, cookie, client, verifier=verifier)
+
+    first, second = await asyncio.gather(
+        exchange(auth_as, client, code, verifier=verifier),
+        exchange(auth_as, client, code, verifier=verifier),
+    )
+
+    assert sorted((first.status, second.status)) == [200, 400]
+    assert len(await auth_as.adapter.find_many("oauth_token", [])) == 1
 
 
 async def test_token_rejects_expired_code(adapter):
@@ -504,6 +792,28 @@ async def test_token_resource_must_match_the_code(auth_as):
     res = await exchange(auth_as, client, code, verifier=verifier, resource="https://other.example")
     assert res.status == 400
     assert (await res.json())["error"] == "invalid_target"
+
+
+async def test_mcp_mode_requires_resource_again_at_token_endpoint(adapter):
+    resource = "https://mcp.example.com/mcp"
+    auth = make_auth(adapter, resource=resource)
+    cookie = await signed_in_cookie(auth)
+    client = await register(auth)
+    verifier = "v" * 43
+    code = await obtain_code(auth, cookie, client, verifier=verifier, resource=resource)
+
+    missing = await exchange(auth, client, code, verifier=verifier)
+    assert missing.status == 400
+    assert (await missing.json())["error"] == "invalid_target"
+
+    accepted = await exchange(
+        auth,
+        client,
+        code,
+        verifier=verifier,
+        resource="HTTPS://MCP.EXAMPLE.COM/mcp",
+    )
+    assert accepted.status == 200
 
 
 async def test_confidential_client_authentication(auth_as):
@@ -593,6 +903,59 @@ async def test_refresh_rotation_and_reuse_detection(auth_as):
     assert reuse.status == 400
     assert (await reuse.json())["error"] == "invalid_grant"
     assert await auth_as.verify_oauth_token(rotated["access_token"]) is None
+
+
+async def test_concurrent_refresh_mints_exactly_one_replacement(auth_as):
+    tokens, client, _cookie = await full_grant(auth_as, scope="mcp")
+
+    async def refresh():
+        return await auth_as.fetch(
+            request_form(
+                f"{BASE}/oauth2/token",
+                {
+                    "grant_type": "refresh_token",
+                    "refresh_token": tokens["refresh_token"],
+                    "client_id": client["client_id"],
+                },
+            )
+        )
+
+    first, second = await asyncio.gather(refresh(), refresh())
+
+    assert sorted((first.status, second.status)) == [200, 400]
+    assert len(await auth_as.adapter.find_many("oauth_token", [])) == 2
+
+
+async def test_mcp_mode_requires_resource_on_refresh(adapter):
+    resource = "https://mcp.example.com/mcp"
+    auth = make_auth(adapter, resource=resource)
+    tokens, client, _cookie = await full_grant(auth, resource=resource)
+
+    missing = await auth.fetch(
+        request_form(
+            f"{BASE}/oauth2/token",
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": tokens["refresh_token"],
+                "client_id": client["client_id"],
+            },
+        )
+    )
+    assert missing.status == 400
+    assert (await missing.json())["error"] == "invalid_target"
+
+    accepted = await auth.fetch(
+        request_form(
+            f"{BASE}/oauth2/token",
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": tokens["refresh_token"],
+                "client_id": client["client_id"],
+                "resource": resource,
+            },
+        )
+    )
+    assert accepted.status == 200
 
 
 async def test_refresh_rejects_other_clients_token(auth_as):

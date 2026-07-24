@@ -71,6 +71,26 @@ async def test_crud_round_trip(adapter):
     assert await adapter.find_one("user", [Where("id", "u1")]) is None
 
 
+async def test_update_many_returns_affected_count_for_guarded_transition(adapter):
+    await adapter.create("user", _user(1))
+    assert (
+        await adapter.update_many(
+            "user",
+            [Where("id", "u1"), Where("email_verified", 0)],
+            {"email_verified": 1},
+        )
+        == 1
+    )
+    assert (
+        await adapter.update_many(
+            "user",
+            [Where("id", "u1"), Where("email_verified", 0)],
+            {"email_verified": 1},
+        )
+        == 0
+    )
+
+
 async def test_operators_sort_limit(adapter):
     for i in range(1, 4):
         await adapter.create("user", _user(i))
