@@ -3,6 +3,7 @@
 import json
 from urllib.parse import parse_qs, urlparse
 
+import hayate_fetch
 import pytest
 from hayate import Headers, Request, Response
 
@@ -126,6 +127,42 @@ async def test_full_callback_creates_user_and_session(id_token_flow):
     assert user is not None and user["email_verified"] == 1
     account = await auth.adapter.find_one("account", [Where("provider_id", "testidp")])
     assert account["account_id"] == "idp-user-1"
+
+
+async def test_default_oauth_backend_never_follows_redirects(adapter, monkeypatch):
+    backend = FakeBackend(
+        {
+            "https://idp.example/token": (
+                200,
+                {
+                    "access_token": "at-1",
+                    "id_token": _jwt({"sub": "idp-user-1"}),
+                },
+            )
+        }
+    )
+    policies = []
+
+    def default_backend(*, redirect):
+        policies.append(redirect)
+        return backend
+
+    monkeypatch.setattr(hayate_fetch, "default_backend", default_backend)
+    auth = Auth(
+        secret="test-secret",
+        adapter=adapter,
+        crypto=ScryptBackend(log_n=12),
+        providers=[_provider(uses_id_token=True)],
+    )
+    state, cookie = await _begin(auth)
+    response = await auth.fetch(
+        Request(
+            f"https://localhost{CALLBACK}?code=auth-code&state={state}",
+            headers={"cookie": cookie},
+        )
+    )
+    assert response.status == 302
+    assert policies == ["manual"]
 
 
 async def test_second_login_reuses_the_account(id_token_flow):

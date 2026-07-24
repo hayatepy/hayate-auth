@@ -66,8 +66,9 @@ release. Status values: **covered** (implemented + regression-tested),
 | Tokens are audience-constrained (RFC 8707 resource) end to end | covered | `::test_token_resource_must_match_the_code`, `::test_verifier_factory_enforces_resource` |
 | User consent obtained per client, recorded, and re-required when scope widens | covered | `::test_authorize_first_time_redirects_to_consent`, `::test_consent_cookie_is_bound_to_the_user`, `::test_authorize_widening_scope_needs_fresh_consent` |
 | Refresh exchange cannot widen scope | covered | `::test_refresh_scope_may_narrow_but_not_widen` |
+| Replay detected during code mint or refresh rotation cannot leave a valid token family | covered | `::test_code_replay_during_mint_cannot_leave_a_valid_token`, `::test_refresh_replay_during_rotation_cannot_leave_a_valid_token` |
 | Token responses are uncacheable (`Cache-Control: no-store`) | covered | `::test_token_response_is_uncacheable` |
 | Anti-automation on open dynamic client registration | external | rate limiting stays the hayate middleware / infrastructure mandate (DESIGN §9) |
 | Token revocation / introspection endpoints | planned (evidence-gated) | DESIGN §19.5 |
 
-**Ratchet: 48 covered** (raise-only; update this line with every release).
+**Ratchet: 49 covered** (raise-only; update this line with every release).

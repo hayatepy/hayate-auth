@@ -389,8 +389,9 @@ hayate-auth/
 | v0.4 | **出荷(2026-07-23)**: TOTP 二要素(RFC 6238、stdlib hmac + base32)。two_factor テーブル / enable・verify・disable / **二段サインイン**(パスワード OK でも 2FA 有効時はセッション不発行 → HMAC 署名チャレンジ cookie → TOTP コードで交換) | RFC 6238 Appendix B ベクタ一致。攻撃面: パスワード単独ではセッション不成立・チャレンジ必須・誤コード拒否。ASVS 23→25。13 テスト。magic link と正式プラグイン API 抽出(§11)は後続 |
 | v0.5 | **出荷(2026-07-23)**: **API キー**(better-auth の API Key plugin 参考)。create/verify/list/delete、`ha_` プレフィックス + SHA-256 ハッシュ保存、scope / expiry、`last_used_at`。`Auth.verify_api_key()` | ハッシュのみ保存(平文流出なし)、期限切れ purge、他ユーザーのキー削除不可を固定。**hayate-mcp の RS(`verify_token`)に差し込む統合を実測**(API キーで MCP 保護)。13 テスト |
 | v0.6 | **出荷(2026-07-23)**: **AS モード**(§19 — RFC 8414 / 7591 / OAuth 2.1 + PKCE S256 / RFC 8707、opaque + family rotation)。mcp の RS と合流し「MCP + AS を 1 アプリ」完全形 | 公式 SDK クライアント(`OAuthClientProvider`)の実 HTTP フル一周を CI 常設(examples/mcp-oauth)。MCP Inspector CLI で tools/call 実測・無トークン 401(research/authorization-server.md)。攻撃リグレッション: code 再利用→family 失効 / refresh reuse→全滅 / PKCE / client・resource 混同。ASVS 25→37。47 テスト追加 |
-| v0.7 | **出荷(2026-07-23)**: **magic link**(プラグインとして新規、§20.1)+ **プラグイン API 抽出**(`AuthPlugin(id, routes)`、API キーを内部移植 — §20.2)+ **passkey**(WebAuthn L3、py_webauthn、`[passkey]` extra、§20.3) | soft-webauthn の実 ceremony で py_webauthn の実検証経路をテスト(モックなし)。攻撃面: 列挙防止 / token 混同 / open redirect / origin 不一致 / **sign counter 巻き戻し** / attestation 再送 / owner 越権。ASVS 37→48。19 テスト追加(全 153) |
+| v0.7 | **出荷(2026-07-23)**: **magic link**(プラグインとして新規、§20.1)+ **プラグイン API 抽出**(`AuthPlugin(id, routes)`、API キーを内部移植 — §20.2)+ **passkey**(WebAuthn L3、py_webauthn、`[passkey]` extra、§20.3) | 仮想 authenticator の実 ceremony で py_webauthn の実検証経路をテスト(モックなし。v0.9 で abandoned 外部 fixture からリポジトリ内実装へ移行)。攻撃面: 列挙防止 / token 混同 / open redirect / origin 不一致 / **sign counter 巻き戻し** / attestation 再送 / owner 越権。ASVS 37→48。19 テスト追加(全 153) |
 | v0.8 | **出荷準備(2026-07-24)**: MCP 2025-11-25 Client ID Metadata Documents、RFC 8707 `resource` 必須化、atomic `update_many`、共通 Principal/Bearer/scope、OpenAPI security、LazyAuth、`py.typed` | better-auth 1.6 の atomic consume/update と 1.7 beta の CIMD 検証を参照。コード/refresh の同時交換は勝者 1 件、CIMD は URL policy・5KiB 上限・redirect/secret 検査、全 176 テスト + strict mypy 28 files ✅ |
+| v0.9 | **出荷準備(2026-07-24)**: code/refresh の mint-gap replay を durable marker + guarded finalization で閉鎖。WebAuthn 3.x の安全な依存列へ更新 | insert 中 replay の強制 interleaving 2 ケース、実 verifier を通す仮想 authenticator、全依存 vulnerability 0 を release gate に固定 |
 | v1.0 | API 凍結 | 本体 v1.0 より後。基準は本体に倣い外部利用の証拠を要件化 |
 
 ### 決定済み(2026-07-22)
@@ -491,6 +492,10 @@ hayate-auth/
   revoked 行への refresh 再提示 = 盗難の証拠として **family 全滅**(RFC 9700 §4.14)。
 - code の `used=0→1` と refresh の `revoked=0→1` は adapter の atomic
   `update_many()` 1 操作で claim し、affected rows が 1 の要求だけが token を mint する。
+  mint 後は claim を `1→3` で finalize してから credential を返す。再提示は
+  `1/3→2` を compromise marker として永続化し、winner が token insert 中でも
+  finalization を失敗させて family を全失効する。既存 INTEGER 列を使うため migration
+  は不要(`0=未使用`, `1=処理中`, `2=compromised`, `3=完了`)。
 - code / access / refresh / client_secret はすべて `secrets.token_urlsafe` +
   **DB には SHA-256 のみ**。client_secret の照合は `hmac.compare_digest`。
 - token / register エンドポイントは cookie 非依存なので CSRF 対象外(既存 csrf.py の
@@ -566,7 +571,7 @@ hayate-auth/
 
 ### 20.3 passkey(W3C WebAuthn Level 3、`[passkey]` extra)
 
-- **決定**: 検証は **py_webauthn**(`webauthn>=2`)に委譲。COSE / CBOR / 署名検証を
+- **決定**: 検証は **py_webauthn**(`webauthn>=3.0.0`)に委譲。COSE / CBOR / 署名検証を
   自作しないのは §8 の鉄則。コア初の optional 依存なので **`[passkey]` extra** とし、
   未インストールで passkey ルートに触れると 501 Problem Details(導入方法を title に)。
 - 設定: `Auth(passkey=PasskeyConfig(rp_id, rp_name, origin))`。未設定なら 404
@@ -584,6 +589,6 @@ hayate-auth/
 - 攻撃リグレッションで固定するもの: challenge 不一致 / origin 不一致(py_webauthn の
   expected_origin)/ **sign counter の巻き戻し拒否**(クローン検知)/ 他ユーザーの
   credential 削除不可 / 二重登録(同 credential_id)拒否。
-- テスト: 実 ceremony を `soft-webauthn`(dev 依存)で合成し、モックではなく
-  py_webauthn の実検証経路を通す。噛み合わなければ cryptography(py_webauthn の
-  推移依存)で ES256 応答を手組みする。
+- テスト: リポジトリ内の最小 virtual authenticator が `cryptography` で
+  none-attestation / ES256 assertion を生成し、モックではなく py_webauthn の実検証経路を
+  通す。abandoned な外部 fixture に production crypto の上限を引きずらせない。

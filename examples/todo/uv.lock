@@ -48,7 +48,7 @@ wheels = [
 
 [[package]]
 name = "hayate-auth"
-version = "0.8.0"
+version = "0.9.0"
 source = { editable = "../../" }
 dependencies = [
     { name = "hayate" },
@@ -58,8 +58,8 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "hayate", specifier = ">=0.8.0" },
-    { name = "hayate-fetch", specifier = ">=0.1.0" },
-    { name = "webauthn", marker = "extra == 'passkey'", specifier = ">=2.0" },
+    { name = "hayate-fetch", specifier = ">=0.1.2" },
+    { name = "webauthn", marker = "extra == 'passkey'", specifier = ">=3.0.0" },
 ]
 provides-extras = ["passkey"]
 
@@ -69,8 +69,7 @@ dev = [
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-asyncio", specifier = ">=0.25" },
     { name = "ruff", specifier = ">=0.9" },
-    { name = "soft-webauthn", specifier = ">=0.1.4" },
-    { name = "webauthn", specifier = ">=2.0" },
+    { name = "webauthn", specifier = ">=3.0.0" },
 ]
 
 [[package]]
@@ -106,14 +105,14 @@ dev = [
 
 [[package]]
 name = "hayate-fetch"
-version = "0.1.0"
+version = "0.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "hayate" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e2/24/fd7d01616172eacab49cf6dc2169dd0a42a0c8d3f6bc0836b1a4f94cbe21/hayate_fetch-0.1.0.tar.gz", hash = "sha256:ecfd6992a24a079f39db2434ae5f3455e363a1b488d819a08e2fdf15dfb549e3", size = 3571, upload-time = "2026-07-22T19:37:54.635Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/ef/a77a5ea2e9127d44ba1d6d6b45cccab620a07b6bb6ae62a2bf9a65fc3256/hayate_fetch-0.1.2.tar.gz", hash = "sha256:5d7dc3ff0f768522f0d6f4bd23bd7c269cf0480d38bc986a1ac849a6510868c1", size = 4869, upload-time = "2026-07-24T15:26:14.502Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7b/a3/374051fcc54f7742fcaf2a237b782525efc6bf6aa18d28ec75b35ea40177/hayate_fetch-0.1.0-py3-none-any.whl", hash = "sha256:16d4d95884367c3e9065946a5b947a6935c0c49a34cbcc6a3b4815feaa404302", size = 4788, upload-time = "2026-07-22T19:37:53.46Z" },
+    { url = "https://files.pythonhosted.org/packages/c8/cb/02ece28c807c4a099fc93fe066b2244f03099706ea1808667b1b9b543d1c/hayate_fetch-0.1.2-py3-none-any.whl", hash = "sha256:3ae68e53e17b8c02e01fba181509eeb966a1c3e505ca7fb7efe4aabfabadf495", size = 6283, upload-time = "2026-07-24T15:26:13.517Z" },
 ]
 
 [[package]]

@@ -2,6 +2,24 @@
 
 All notable changes to hayate-auth are documented here.
 
+## [0.9.0] - 2026-07-24
+
+### Security
+
+- Close the authorization-code and refresh-rotation mint-gap race with
+  durable family-compromise markers and guarded finalization. A replay
+  observed while a replacement token is being inserted now burns the family
+  before either request can disclose valid credentials.
+- Upgrade the optional passkey stack to `webauthn` 3.x and its current
+  `cryptography` / `pyOpenSSL` security line. Replace the abandoned
+  `soft-webauthn` test dependency with an in-repository virtual authenticator
+  that still exercises real WebAuthn verification.
+- Refuse redirects by default for OAuth token and user-information requests,
+  preventing provider credentials or bearer tokens from reaching an
+  unexpected origin.
+- Audit locked dependencies on every change and publish an SPDX SBOM plus
+  GitHub build and SBOM attestations with each release.
+
 ## [0.8.0] - 2026-07-24
 
 ### Added

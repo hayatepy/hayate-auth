@@ -1,17 +1,17 @@
-"""Passkeys (DESIGN §20.3): real WebAuthn ceremonies via soft-webauthn.
+"""Passkeys (DESIGN §20.3): real WebAuthn ceremonies.
 
-soft-webauthn plays the authenticator (navigator.credentials.create/get),
-so py_webauthn's actual verification path runs — origin binding, challenge
-matching, and sign-counter regression are exercised for real, not mocked.
+The local virtual authenticator plays navigator.credentials.create/get, so
+py_webauthn's actual verification path runs — origin binding, challenge
+matching, signatures, and sign-counter regression are exercised, not mocked.
 """
 
 import pytest
 from hayate import Request
-from soft_webauthn import SoftWebauthnDevice
 from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
 
 from conftest import cookie_pair, request_json
 from hayate_auth import Auth, PasskeyConfig, ScryptBackend
+from webauthn_device import VirtualWebAuthnDevice
 
 BASE = "/api/auth"
 ORIGIN = "http://localhost"
@@ -28,7 +28,7 @@ def auth_pk(adapter):
 
 
 def to_device_options(options: dict) -> dict:
-    """py_webauthn JSON options -> the browser-shaped dict soft-webauthn eats."""
+    """Convert py_webauthn JSON options to browser-side byte fields."""
     public_key = dict(options)
     public_key["challenge"] = base64url_to_bytes(public_key["challenge"])
     if "user" in public_key:
@@ -40,15 +40,14 @@ def to_device_options(options: dict) -> dict:
 
 
 def to_json_credential(credential: dict) -> dict:
-    """soft-webauthn bytes fields -> the base64url JSON shape py_webauthn parses."""
+    """Convert virtual-device bytes to the base64url JSON a browser sends."""
     response = {
         key: bytes_to_base64url(value)
         for key, value in credential["response"].items()
         if value is not None
     }
     return {
-        # soft-webauthn leaves id as padded bytes; normalize to the unpadded
-        # base64url string a browser would send.
+        # Normalize to the unpadded base64url string a browser would send.
         "id": bytes_to_base64url(credential["rawId"]),
         "rawId": bytes_to_base64url(credential["rawId"]),
         "type": credential["type"],
@@ -65,7 +64,7 @@ async def signed_in_cookie(auth, email="pk@example.com") -> str:
 
 
 async def register_passkey(auth, cookie, device=None, *, origin=ORIGIN):
-    device = device or SoftWebauthnDevice()
+    device = device or VirtualWebAuthnDevice()
     options_res = await auth.fetch(
         request_json(f"{BASE}/passkey/generate-register-options", {}, cookie=cookie)
     )
@@ -177,7 +176,7 @@ async def test_replayed_attestation_cannot_register_twice(auth_pk):
     """A stolen registration response replayed while the challenge cookie is
     still fresh must hit the duplicate-credential guard, not create a row."""
     cookie = await signed_in_cookie(auth_pk)
-    device = SoftWebauthnDevice()
+    device = VirtualWebAuthnDevice()
     options_res = await auth_pk.fetch(
         request_json(f"{BASE}/passkey/generate-register-options", {}, cookie=cookie)
     )

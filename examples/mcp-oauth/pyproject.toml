@@ -7,6 +7,10 @@ dependencies = ["hayate>=0.8.0", "hayate-auth", "hayate-mcp>=0.6.0"]
 [tool.uv.sources]
 hayate-auth = { path = "../..", editable = true }
 
+[tool.uv]
+# This acceptance app is an ASGI/uvicorn process, not a Pyodide bundle.
+environments = ["sys_platform != 'emscripten'"]
+
 [dependency-groups]
 dev = [
   "pytest>=8.3",
