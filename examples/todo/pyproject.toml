@@ -2,7 +2,7 @@
 name = "hayate-auth-todo-example"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["hayate>=0.6.0", "hayate-auth"]
+dependencies = ["hayate>=0.10.0", "hayate-auth"]
 
 [tool.uv.sources]
 hayate-auth = { path = "../..", editable = true }
