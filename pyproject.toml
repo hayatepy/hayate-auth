@@ -21,7 +21,7 @@ classifiers = [
   "Topic :: Internet :: WWW/HTTP :: Session",
   "Typing :: Typed",
 ]
-dependencies = ["hayate>=0.8.0", "hayate-fetch>=0.1.2"]
+dependencies = ["hayate>=0.10.0", "hayate-fetch>=0.1.2"]
 
 [project.optional-dependencies]
 passkey = ["webauthn>=3.0.0"]
