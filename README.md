@@ -4,7 +4,7 @@ Standards-first authentication for [hayate](https://github.com/hayatepy/hayate) 
 a mountable, better-auth-style auth handler built on the WHATWG Request/Response
 model.
 
-> **Status: alpha (0.8.x).** Email+password, sessions, CSRF, email
+> **Status: alpha (0.9.x).** Email+password, sessions, CSRF, email
 > verification, password reset, **OAuth 2.1 + PKCE** (Google / GitHub), **TOTP
 > two-factor**, **API keys**, an **OAuth 2.1 authorization server** (AS
 > mode: RFC 8414 metadata, RFC 7591 dynamic registration, MCP Client ID
@@ -215,7 +215,9 @@ auth = Auth(
   infrastructure): brute-force throttling is deliberately out of core.
 - Authorization-server adapters must implement atomic `update_many()` and
   return the affected-row count. This prevents concurrent authorization-code
-  or refresh-token redemption from minting multiple token families.
+  or refresh-token redemption from minting multiple token families. Durable
+  compromise markers and guarded post-insert finalization also prevent replay
+  detection during token creation from leaving a live family.
 
 ## License
 

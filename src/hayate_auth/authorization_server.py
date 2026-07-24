@@ -616,8 +616,25 @@ async def _token_authorization_code(auth: Auth, form: Any, client: dict[str, Any
         # Replay of a spent code is evidence of theft: revoke everything it
         # issued before rejecting (RFC 9700 §4.2 / RFC 6749 §4.1.2).
         if row["family_id"]:
-            await auth.adapter.update(
-                "oauth_token", [Where("family_id", row["family_id"])], {"revoked": 1}
+            # ``used = 2`` is a durable compromise marker.  A successful
+            # exchange finalizes 1 -> 3 before disclosing its token.  Trying
+            # both guarded source states closes the race where the winner
+            # finalizes after this replay read the row.
+            marked = await auth.adapter.update_many(
+                "oauth_code",
+                [Where("id", row["id"]), Where("used", 1)],
+                {"used": 2},
+            )
+            if marked == 0:
+                await auth.adapter.update_many(
+                    "oauth_code",
+                    [Where("id", row["id"]), Where("used", 3)],
+                    {"used": 2},
+                )
+            await auth.adapter.update_many(
+                "oauth_token",
+                [Where("family_id", row["family_id"]), Where("revoked", 0)],
+                {"revoked": 1},
             )
         return _oauth_error(400, "invalid_grant")
     if row["expires_at"] <= sessions.isoformat(sessions.now()):
@@ -660,6 +677,7 @@ async def _token_authorization_code(auth: Auth, form: Any, client: dict[str, Any
         user_id=row["user_id"],
         scope=row["scope"],
         resource=row["resource"],
+        authorization_code_id=row["id"],
     )
 
 
@@ -676,8 +694,24 @@ async def _token_refresh(auth: Auth, form: Any, client: dict[str, Any]) -> Respo
     if row["revoked"]:
         # A rotated-out refresh token came back: assume theft, kill the family
         # (RFC 9700 §4.14).
-        await auth.adapter.update(
-            "oauth_token", [Where("family_id", row["family_id"])], {"revoked": 1}
+        # Preserve one ``revoked = 2`` row as a durable family-compromise
+        # marker.  A concurrent rotation checks it after inserting its
+        # replacement, so a replay cannot slip through the create gap.
+        marked = await auth.adapter.update_many(
+            "oauth_token",
+            [Where("id", row["id"]), Where("revoked", 1)],
+            {"revoked": 2},
+        )
+        if marked == 0:
+            await auth.adapter.update_many(
+                "oauth_token",
+                [Where("id", row["id"]), Where("revoked", 3)],
+                {"revoked": 2},
+            )
+        await auth.adapter.update_many(
+            "oauth_token",
+            [Where("family_id", row["family_id"]), Where("revoked", 0)],
+            {"revoked": 1},
         )
         return _oauth_error(400, "invalid_grant")
     if row["client_id"] != client["client_id"]:
@@ -720,6 +754,7 @@ async def _token_refresh(auth: Auth, form: Any, client: dict[str, Any]) -> Respo
         user_id=row["user_id"],
         scope=scope,
         resource=row["resource"],
+        rotated_token_id=row["id"],
     )
 
 
@@ -731,6 +766,8 @@ async def _mint_tokens(
     user_id: str,
     scope: str | None,
     resource: str | None,
+    authorization_code_id: str | None = None,
+    rotated_token_id: str | None = None,
 ) -> Response:
     config = auth.authorization_server
     assert config is not None
@@ -757,6 +794,30 @@ async def _mint_tokens(
             "created_at": sessions.isoformat(stamp),
         },
     )
+    finalized = 0
+    if authorization_code_id is not None:
+        finalized = await auth.adapter.update_many(
+            "oauth_code",
+            [Where("id", authorization_code_id), Where("used", 1)],
+            {"used": 3},
+        )
+    elif rotated_token_id is not None:
+        finalized = await auth.adapter.update_many(
+            "oauth_token",
+            [Where("id", rotated_token_id), Where("revoked", 1)],
+            {"revoked": 3},
+        )
+    if finalized != 1 or await _family_compromised(auth, family_id):
+        # A replay may have been detected while the token row did not exist.
+        # The guarded finalization also prevents a replay that read the
+        # in-progress state from acting on stale data without being noticed.
+        # Never disclose credentials from a compromised family.
+        await auth.adapter.update_many(
+            "oauth_token",
+            [Where("family_id", family_id), Where("revoked", 0)],
+            {"revoked": 1},
+        )
+        return _oauth_error(400, "invalid_grant")
     body: dict[str, Any] = {
         "access_token": access,
         "token_type": "Bearer",
@@ -768,6 +829,21 @@ async def _mint_tokens(
         body["refresh_token"] = refresh
     headers = Headers({"content-type": "application/json", "cache-control": "no-store"})
     return Response(json.dumps(body, separators=(",", ":")), status=200, headers=headers)
+
+
+async def _family_compromised(auth: Auth, family_id: str) -> bool:
+    """Return whether replay detection has permanently burned a token family."""
+    code_replay = await auth.adapter.find_one(
+        "oauth_code",
+        [Where("family_id", family_id), Where("used", 2)],
+    )
+    if code_replay is not None:
+        return True
+    refresh_replay = await auth.adapter.find_one(
+        "oauth_token",
+        [Where("family_id", family_id), Where("revoked", 2)],
+    )
+    return refresh_replay is not None
 
 
 # -- POST /oauth2/register (RFC 7591) --------------------------------------------------

@@ -744,6 +744,38 @@ async def test_concurrent_code_exchange_mints_exactly_one_token_family(auth_as):
     assert len(await auth_as.adapter.find_many("oauth_token", [])) == 1
 
 
+async def test_code_replay_during_mint_cannot_leave_a_valid_token(adapter, monkeypatch):
+    auth = make_auth(adapter)
+    cookie = await signed_in_cookie(auth)
+    client = await register(auth)
+    verifier = "v" * 43
+    code = await obtain_code(auth, cookie, client, verifier=verifier)
+
+    create_started = asyncio.Event()
+    resume_create = asyncio.Event()
+    original_create = adapter.create
+
+    async def paused_create(model, data):
+        if model == "oauth_token":
+            create_started.set()
+            await resume_create.wait()
+        return await original_create(model, data)
+
+    monkeypatch.setattr(adapter, "create", paused_create)
+    winner = asyncio.create_task(exchange(auth, client, code, verifier=verifier))
+    await create_started.wait()
+
+    replay = await exchange(auth, client, code, verifier=verifier)
+    assert replay.status == 400
+    resume_create.set()
+    first = await winner
+
+    assert first.status == 400
+    rows = await adapter.find_many("oauth_token", [])
+    assert len(rows) == 1
+    assert rows[0]["revoked"] == 1
+
+
 async def test_token_rejects_expired_code(adapter):
     auth = make_auth(adapter, code_ttl=timedelta(seconds=-1))
     cookie = await signed_in_cookie(auth)
@@ -924,6 +956,48 @@ async def test_concurrent_refresh_mints_exactly_one_replacement(auth_as):
 
     assert sorted((first.status, second.status)) == [200, 400]
     assert len(await auth_as.adapter.find_many("oauth_token", [])) == 2
+
+
+async def test_refresh_replay_during_rotation_cannot_leave_a_valid_token(adapter, monkeypatch):
+    auth = make_auth(adapter)
+    tokens, client, _cookie = await full_grant(auth, scope="mcp")
+
+    create_started = asyncio.Event()
+    resume_create = asyncio.Event()
+    original_create = adapter.create
+
+    async def paused_create(model, data):
+        if model == "oauth_token":
+            create_started.set()
+            await resume_create.wait()
+        return await original_create(model, data)
+
+    monkeypatch.setattr(adapter, "create", paused_create)
+
+    async def refresh():
+        return await auth.fetch(
+            request_form(
+                f"{BASE}/oauth2/token",
+                {
+                    "grant_type": "refresh_token",
+                    "refresh_token": tokens["refresh_token"],
+                    "client_id": client["client_id"],
+                },
+            )
+        )
+
+    winner = asyncio.create_task(refresh())
+    await create_started.wait()
+    replay = await refresh()
+    assert replay.status == 400
+    resume_create.set()
+    first = await winner
+
+    assert first.status == 400
+    rows = await adapter.find_many("oauth_token", [])
+    assert len(rows) == 2
+    assert all(row["revoked"] for row in rows)
+    assert await auth.verify_oauth_token(tokens["access_token"]) is None
 
 
 async def test_mcp_mode_requires_resource_on_refresh(adapter):

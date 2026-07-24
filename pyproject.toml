@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "hayate-auth"
-version = "0.8.0"
+version = "0.9.0"
 description = "Standards-first authentication for hayate: sessions, OAuth 2.1, passkeys, API keys, and Cloudflare D1"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -21,10 +21,10 @@ classifiers = [
   "Topic :: Internet :: WWW/HTTP :: Session",
   "Typing :: Typed",
 ]
-dependencies = ["hayate>=0.8.0", "hayate-fetch>=0.1.0"]
+dependencies = ["hayate>=0.8.0", "hayate-fetch>=0.1.2"]
 
 [project.optional-dependencies]
-passkey = ["webauthn>=2.0"]
+passkey = ["webauthn>=3.0.0"]
 
 [project.urls]
 Repository = "https://github.com/hayatepy/hayate-auth"
@@ -37,8 +37,7 @@ dev = [
   "pytest>=8.3",
   "pytest-asyncio>=0.25",
   "ruff>=0.9",
-  "soft-webauthn>=0.1.4",
-  "webauthn>=2.0",
+  "webauthn>=3.0.0",
 ]
 
 [tool.pytest.ini_options]

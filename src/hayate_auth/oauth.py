@@ -213,7 +213,13 @@ async def _exchange(
     auth: Auth, provider: OAuthProvider, code: str, stored: dict[str, Any]
 ) -> dict[str, Any] | None:
     """Code -> tokens -> a normalized identity dict, or None on failure."""
-    fetch = import_module("hayate_fetch").fetch
+    hayate_fetch = import_module("hayate_fetch")
+    fetch = hayate_fetch.fetch
+    backend = (
+        auth.http_backend
+        if auth.http_backend is not None
+        else hayate_fetch.default_backend(redirect="manual")
+    )
 
     token_response = await fetch(
         provider.token_url,
@@ -232,7 +238,7 @@ async def _exchange(
                 "code_verifier": stored["verifier"],
             }
         ),
-        backend=auth.http_backend,
+        backend=backend,
     )
     if token_response.status != 200:
         return None
@@ -259,7 +265,7 @@ async def _exchange(
             "accept": "application/json",
             "user-agent": "hayate-auth",
         },
-        backend=auth.http_backend,
+        backend=backend,
     )
     if userinfo_response.status != 200:
         return None

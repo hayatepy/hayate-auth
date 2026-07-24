@@ -1,0 +1,17 @@
+# Keep SHA-pinned actions and every uv lockfile current in grouped weekly PRs.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: uv
+    directories:
+      - /
+      - /examples/todo
+      - /examples/mcp-oauth
+    schedule:
+      interval: weekly
