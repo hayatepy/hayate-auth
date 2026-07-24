@@ -218,11 +218,14 @@ wheels = [
 
 [[package]]
 name = "hayate"
-version = "0.8.0"
+version = "0.10.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ae/d4/be6689efdba8dfa972b5fdad67adc62c12c42ada440b6b5e8cf044a87d68/hayate-0.8.0.tar.gz", hash = "sha256:96b91b582787099f2752dd8411c5cc21039fe10ab85f5582a18e27a233227791", size = 47292, upload-time = "2026-07-22T16:15:58.761Z" }
+dependencies = [
+    { name = "uts46" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/37/27/b0bdc3acfaaa7c96116c0f8be45a797868d715df5fe5d094d935e681fbde/hayate-0.10.0.tar.gz", hash = "sha256:ad3dddaf60afe63c305a848f086d2998f7ec91fc303fa4f0fdd45e3052118f28", size = 48267, upload-time = "2026-07-24T15:27:09.986Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e2/da/bb7253c59b1f4acc48d00ebac23ece309b38fc10e208e0714949b67d1b19/hayate-0.8.0-py3-none-any.whl", hash = "sha256:63bb1757159c86680015da1745614026c5ae0f9ea7b4d5ec2bec394c6fac9cae", size = 63166, upload-time = "2026-07-22T16:15:57.551Z" },
+    { url = "https://files.pythonhosted.org/packages/3a/e8/3b93a264ec8376f75e6a33b9799d6832768276808b886877ccf256e437bf/hayate-0.10.0-py3-none-any.whl", hash = "sha256:ba053829f63f123ffa83aad5ee2d389cd5f15cc7bf43f7bd5f0770f86dfb0648", size = 64125, upload-time = "2026-07-24T15:27:08.502Z" },
 ]
 
 [[package]]
@@ -270,9 +273,9 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "hayate", specifier = ">=0.8.0" },
+    { name = "hayate", specifier = ">=0.10.0" },
     { name = "hayate-auth", editable = "../../" },
-    { name = "hayate-mcp", specifier = ">=0.6.0" },
+    { name = "hayate-mcp", specifier = ">=0.8.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -296,15 +299,15 @@ wheels = [
 
 [[package]]
 name = "hayate-mcp"
-version = "0.6.1"
+version = "0.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "hayate" },
     { name = "mcp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/af/9d/67e189d2ddb094d81e7bbaba01d36c24e57e7bf17f908020ed8a6c9820e3/hayate_mcp-0.6.1.tar.gz", hash = "sha256:bbe46a62745d43826d7e9d97bfcb7a3a735bc34fcd37c1c2dbf104e9c0588600", size = 10445, upload-time = "2026-07-24T11:50:41.313Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f1/bd/79a0144142e93303279e59e8403f78330a5f6a975cf67a11a5d6626efcdd/hayate_mcp-0.8.0.tar.gz", hash = "sha256:a98109ed3a38b7d5ca8373f5bbc0955f085a7035b6446d56d967f08dfa4b0de0", size = 19898, upload-time = "2026-07-24T15:29:12.602Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ef/04/55c090cb25b19eb4ba036c28424107967e037459e31c2e8b454c54324f98/hayate_mcp-0.6.1-py3-none-any.whl", hash = "sha256:fb07074cbcdbd766885586d575ef00fd090404b07c307ecfd237b0dbe570b661", size = 12771, upload-time = "2026-07-24T11:50:40.146Z" },
+    { url = "https://files.pythonhosted.org/packages/20/5f/df3f3953ba6c9b885bc5570ef09449caadb61eb77c2f7d84337d1de45fd0/hayate_mcp-0.8.0-py3-none-any.whl", hash = "sha256:9efd33843b3262144234e58d88b1b0cfd400d84a84845928f830e27fcd9095d3", size = 24428, upload-time = "2026-07-24T15:29:11.316Z" },
 ]
 
 [[package]]
@@ -813,6 +816,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/55/e3/70399cb7dd41c10ac53367ae42139cf4b1ca5f36bb3dc6c9d33acdb43655/typing_inspection-0.4.2.tar.gz", hash = "sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464", size = 75949, upload-time = "2025-10-01T02:14:41.687Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/dc/9b/47798a6c91d8bdb567fe2698fe81e0c6b7cb7ef4d13da4114b41d239f65d/typing_inspection-0.4.2-py3-none-any.whl", hash = "sha256:4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7", size = 14611, upload-time = "2025-10-01T02:14:40.154Z" },
+]
+
+[[package]]
+name = "uts46"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/23/11/a9b7f1378a55adc48bcaf8ad4598c94a69e5ba1abfa777ee453e7f86c25f/uts46-0.2.0.tar.gz", hash = "sha256:64a992b4ed2ba2b07c7f66159e914b04566a8d064da6315336d56fb11a13c2c8", size = 67729, upload-time = "2025-03-25T21:30:03.3Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7c/f9/d4a33ea9c418614a24aa4a6e2ff48c1fd6fbdadfc09d4d4b7aeafb0d8c2c/uts46-0.2.0-py3-none-any.whl", hash = "sha256:78faa09204bba3496b12178ddae48e547393afddc591f3c42fe273a10ba8a6a3", size = 56001, upload-time = "2025-03-25T21:30:01.738Z" },
 ]
 
 [[package]]
