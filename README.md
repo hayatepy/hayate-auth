@@ -12,7 +12,8 @@ model.
 > extra) are implemented and attack-regression-tested; a `generate` CLI, a
 > plugin API, and a Cloudflare D1 adapter ship too. Not yet security-audited —
 > see [SECURITY.md](SECURITY.md). The internal design memo (Japanese) lives in
-> [DESIGN.md](DESIGN.md).
+> [DESIGN.md](DESIGN.md); release history is in
+> [CHANGELOG.md](CHANGELOG.md).
 
 ```python
 import os
