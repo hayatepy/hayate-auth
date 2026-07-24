@@ -39,6 +39,12 @@ from . import session as sessions
 from ._signed import sign_payload, unsign_payload
 from ._uuid7 import new_id
 from .adapter import Where
+from .cimd import (
+    ClientIdMetadataDocuments,
+    InvalidClientMetadata,
+    is_metadata_client_id,
+    resolve_metadata_client,
+)
 from .routes import _json_response, _read_json_object
 
 if TYPE_CHECKING:
@@ -72,17 +78,48 @@ class AuthorizationServer:
     login_url: str
     consent_url: str
     scopes_supported: tuple[str, ...] = ()
+    resource: str | None = None
+    client_id_metadata_documents: ClientIdMetadataDocuments | None = None
     access_token_ttl: timedelta = timedelta(hours=1)
     refresh_token_ttl: timedelta = timedelta(days=30)
     code_ttl: timedelta = timedelta(minutes=5)
 
     def __post_init__(self) -> None:
         parts = urlsplit(self.issuer)
+        try:
+            _issuer_port = parts.port
+        except ValueError:
+            raise ValueError("issuer contains an invalid port") from None
         if parts.scheme not in ("https", "http") or not parts.netloc:
             raise ValueError("issuer must be an absolute http(s) origin")
-        if parts.path not in ("", "/") or parts.query or parts.fragment:
+        if (
+            parts.path not in ("", "/")
+            or parts.query
+            or parts.fragment
+            or parts.username
+            or parts.password
+        ):
             raise ValueError("issuer must be an origin without path, query, or fragment")
-        object.__setattr__(self, "issuer", f"{parts.scheme}://{parts.netloc}")
+        if parts.scheme == "http" and parts.hostname not in LOOPBACK_HOSTS:
+            raise ValueError("issuer must use https except on loopback hosts")
+        object.__setattr__(self, "issuer", f"{parts.scheme.lower()}://{parts.netloc.lower()}")
+        if self.resource is not None:
+            resource = urlsplit(self.resource)
+            try:
+                _resource_port = resource.port
+            except ValueError:
+                raise ValueError("resource contains an invalid port") from None
+            if (
+                resource.scheme not in ("https", "http")
+                or not resource.netloc
+                or resource.fragment
+                or resource.username
+                or resource.password
+            ):
+                raise ValueError("resource must be an absolute HTTP(S) URI without a fragment")
+            if resource.scheme == "http" and resource.hostname not in LOOPBACK_HOSTS:
+                raise ValueError("resource must use https except on loopback hosts")
+            object.__setattr__(self, "resource", _canonical_resource(self.resource))
 
 
 # -- small shared pieces ---------------------------------------------------------------
@@ -150,14 +187,30 @@ def _matches_registered(uri: str, registered: list[str]) -> bool:
     return False
 
 
+def _canonical_resource(value: str) -> str:
+    parts = urlsplit(value)
+    return parts._replace(
+        scheme=parts.scheme.lower(),
+        netloc=parts.netloc.lower(),
+    ).geturl()
+
+
+def _resource_matches(presented: str, expected: str) -> bool:
+    return _canonical_resource(presented) == _canonical_resource(expected)
+
+
 def _acceptable_redirect_uri(uri: str) -> bool:
     parsed = urlsplit(uri)
-    if not parsed.scheme or parsed.fragment:
+    try:
+        _port = parsed.port
+    except ValueError:
+        return False
+    if not parsed.scheme or parsed.fragment or parsed.username or parsed.password:
         return False
     if parsed.scheme == "https":
-        return True
+        return bool(parsed.netloc and parsed.hostname)
     if parsed.scheme == "http":
-        return parsed.hostname in LOOPBACK_HOSTS
+        return bool(parsed.netloc) and parsed.hostname in LOOPBACK_HOSTS
     # Private-use schemes for native apps (RFC 8252 §7.1); block script schemes.
     return parsed.scheme not in FORBIDDEN_SCHEMES
 
@@ -214,6 +267,8 @@ def metadata_document(auth: Auth) -> dict[str, Any]:
     }
     if config.scopes_supported:
         doc["scopes_supported"] = list(config.scopes_supported)
+    if config.client_id_metadata_documents is not None:
+        doc["client_id_metadata_document_supported"] = True
     return doc
 
 
@@ -236,6 +291,15 @@ async def authorize(auth: Auth, request: Request) -> Response:
         if client_id
         else None
     )
+    if (
+        client_id
+        and config.client_id_metadata_documents is not None
+        and is_metadata_client_id(client_id)
+    ):
+        try:
+            client = await resolve_metadata_client(auth, client_id, client)
+        except InvalidClientMetadata as error:
+            return problem(400, title="Invalid client_id", detail=str(error))
     if client is None:
         # No validated redirect target exists: answer directly (RFC 6749 §4.1.2.1).
         return problem(400, title="Unknown client_id")
@@ -262,6 +326,17 @@ async def authorize(auth: Auth, request: Request) -> Response:
             redirect_uri, state, "invalid_target", "only a single resource is supported"
         )
     resource = resources[0] if resources else None
+    if config.resource is not None and (
+        resource is None or not _resource_matches(resource, config.resource)
+    ):
+        return _error_redirect(
+            redirect_uri,
+            state,
+            "invalid_target",
+            "resource must identify this MCP server",
+        )
+    if resource is not None:
+        resource = _canonical_resource(resource)
     scope = params.get("scope") or ""
     if config.scopes_supported and any(
         item not in config.scopes_supported for item in scope.split()
@@ -462,6 +537,12 @@ async def consent(auth: Auth, request: Request) -> Response:
 async def token(auth: Auth, request: Request) -> Response:
     if auth.authorization_server is None:
         return problem(404, title="Not Found")
+    if (request.headers.get("content-type") or "").partition(";")[0].strip().lower() != (
+        "application/x-www-form-urlencoded"
+    ):
+        return _oauth_error(
+            400, "invalid_request", "body must be application/x-www-form-urlencoded"
+        )
     try:
         form = await request.form_data()
     except Exception:
@@ -485,12 +566,16 @@ async def _authenticate_client(
     auth: Auth, request: Request, form: Any
 ) -> dict[str, Any] | Response:
     header = request.headers.get("authorization")
-    if header is not None and header.lower().startswith("basic "):
+    if header is not None:
+        if not header.lower().startswith("basic "):
+            return _oauth_error(401, "invalid_client", basic=True)
         try:
-            decoded = base64.b64decode(header[6:].strip()).decode("utf-8")
+            decoded = base64.b64decode(header[6:].strip(), validate=True).decode("utf-8")
         except (ValueError, UnicodeDecodeError):
             return _oauth_error(401, "invalid_client", basic=True)
-        encoded_id, _, encoded_secret = decoded.partition(":")
+        encoded_id, separator, encoded_secret = decoded.partition(":")
+        if not separator:
+            return _oauth_error(401, "invalid_client", basic=True)
         return await _check_client(
             auth, unquote(encoded_id), unquote(encoded_secret), "client_secret_basic"
         )
@@ -548,13 +633,26 @@ async def _token_authorization_code(auth: Auth, form: Any, client: dict[str, Any
     resources = form.get_all("resource")
     if len(resources) > 1:
         return _oauth_error(400, "invalid_target", "only a single resource is supported")
-    if resources and resources[0] != row["resource"]:
+    config = auth.authorization_server
+    assert config is not None
+    if config.resource is not None and not resources:
+        return _oauth_error(400, "invalid_target", "resource is required")
+    if resources and (
+        row["resource"] is None or not _resource_matches(resources[0], row["resource"])
+    ):
         return _oauth_error(400, "invalid_target")
 
     family = new_id()
-    await auth.adapter.update(
-        "oauth_code", [Where("id", row["id"])], {"used": 1, "family_id": family}
+    claimed = await auth.adapter.update_many(
+        "oauth_code",
+        [Where("id", row["id"]), Where("used", 0)],
+        {"used": 1, "family_id": family},
     )
+    if claimed != 1:
+        # Another request won the guarded transition. Do not mint a second
+        # token family, and do not revoke the winner as if this were a later
+        # replay: simultaneous retries are not evidence of theft.
+        return _oauth_error(400, "invalid_grant")
     return await _mint_tokens(
         auth,
         client=client,
@@ -589,6 +687,18 @@ async def _token_refresh(auth: Auth, form: Any, client: dict[str, Any]) -> Respo
     ):
         return _oauth_error(400, "invalid_grant")
 
+    resources = form.get_all("resource")
+    if len(resources) > 1:
+        return _oauth_error(400, "invalid_target", "only a single resource is supported")
+    config = auth.authorization_server
+    assert config is not None
+    if config.resource is not None and not resources:
+        return _oauth_error(400, "invalid_target", "resource is required")
+    if resources and (
+        row["resource"] is None or not _resource_matches(resources[0], row["resource"])
+    ):
+        return _oauth_error(400, "invalid_target")
+
     scope = form.get("scope")
     if isinstance(scope, str) and scope:
         if not set(scope.split()) <= set((row["scope"] or "").split()):
@@ -596,7 +706,13 @@ async def _token_refresh(auth: Auth, form: Any, client: dict[str, Any]) -> Respo
     else:
         scope = row["scope"]
 
-    await auth.adapter.update("oauth_token", [Where("id", row["id"])], {"revoked": 1})
+    claimed = await auth.adapter.update_many(
+        "oauth_token",
+        [Where("id", row["id"]), Where("revoked", 0)],
+        {"revoked": 1},
+    )
+    if claimed != 1:
+        return _oauth_error(400, "invalid_grant")
     return await _mint_tokens(
         auth,
         client=client,
@@ -660,6 +776,10 @@ async def _mint_tokens(
 async def register_client(auth: Auth, request: Request) -> Response:
     if auth.authorization_server is None:
         return problem(404, title="Not Found")
+    if (request.headers.get("content-type") or "").partition(";")[0].strip().lower() != (
+        "application/json"
+    ):
+        return _oauth_error(400, "invalid_request", "body must use application/json")
     data = await _read_json_object(request)
     if isinstance(data, Response):
         return data
@@ -680,6 +800,16 @@ async def register_client(auth: Auth, request: Request) -> Response:
                 "invalid_redirect_uri",
                 f"{uri!r} is not acceptable (https, loopback http, or a private-use scheme)",
             )
+        if auth.authorization_server.resource is not None:
+            redirect = urlsplit(uri)
+            if redirect.scheme != "https" and not (
+                redirect.scheme == "http" and redirect.hostname in LOOPBACK_HOSTS
+            ):
+                return _oauth_error(
+                    400,
+                    "invalid_redirect_uri",
+                    "MCP clients must use https or a loopback http redirect URI",
+                )
 
     method = data.get("token_endpoint_auth_method", "client_secret_basic")
     if method not in AUTH_METHODS:
@@ -760,12 +890,19 @@ async def verify_token(
         return None
     if row["access_expires_at"] <= sessions.isoformat(sessions.now()):
         return None
-    if resource is not None and row["resource"] != resource:
+    if resource is not None and (
+        row["resource"] is None or not _resource_matches(row["resource"], resource)
+    ):
         return None
-    return {
-        "user_id": row["user_id"],
-        "client_id": row["client_id"],
-        "scopes": (row["scope"] or "").split(),
-        "token_id": row["id"],
-        "resource": row["resource"],
-    }
+    from .principal import principal_from_claims
+
+    return principal_from_claims(
+        {
+            "user_id": row["user_id"],
+            "client_id": row["client_id"],
+            "scopes": (row["scope"] or "").split(),
+            "token_id": row["id"],
+            "resource": row["resource"],
+        },
+        credential_type="oauth",
+    )

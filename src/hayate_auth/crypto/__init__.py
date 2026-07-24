@@ -18,6 +18,8 @@ import hashlib
 import hmac
 import os
 import sys
+from collections.abc import Callable
+from importlib import import_module
 from typing import Protocol
 
 __all__ = [
@@ -47,7 +49,7 @@ def _b64decode(text: str) -> bytes:
     return base64.b64decode(text + "=" * (-len(text) % 4))
 
 
-async def _off_loop(fn):
+async def _off_loop[T](fn: Callable[[], T]) -> T:
     """Run a CPU-heavy KDF without blocking the event loop.
 
     Pyodide has no threads, but there each request owns its isolate, so
@@ -130,8 +132,8 @@ class Pbkdf2Backend:
 
 
 async def _webcrypto_pbkdf2(password: bytes, salt: bytes, iterations: int, dklen: int) -> bytes:
-    import js
-    from pyodide.ffi import to_js
+    js = import_module("js")
+    to_js = import_module("pyodide.ffi").to_js
 
     key = await js.crypto.subtle.importKey(
         "raw", to_js(password), "PBKDF2", False, to_js(["deriveBits"])

@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "hayate-auth"
-version = "0.7.1"
+version = "0.8.0"
 description = "Standards-first authentication for hayate: sessions, OAuth 2.1, passkeys, API keys, and Cloudflare D1"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -19,6 +19,7 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
   "Topic :: Internet :: WWW/HTTP :: Session",
+  "Typing :: Typed",
 ]
 dependencies = ["hayate>=0.8.0", "hayate-fetch>=0.1.0"]
 
@@ -32,6 +33,7 @@ Changelog = "https://github.com/hayatepy/hayate-auth/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [
+  "mypy>=1.18",
   "pytest>=8.3",
   "pytest-asyncio>=0.25",
   "ruff>=0.9",
@@ -42,6 +44,9 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.mypy]
+strict = true
 
 [tool.ruff]
 line-length = 100

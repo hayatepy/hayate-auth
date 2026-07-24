@@ -23,6 +23,7 @@ from . import session as sessions
 from ._uuid7 import new_id
 from .adapter import Where
 from .plugin import AuthPlugin
+from .principal import principal_from_claims
 from .routes import _json_response, _read_json_object
 
 if TYPE_CHECKING:
@@ -157,12 +158,15 @@ async def verify_key(auth: Auth, key: str) -> dict[str, Any] | None:
         [Where("id", row["id"])],
         {"last_used_at": sessions.isoformat(sessions.now())},
     )
-    return {
-        "user_id": row["user_id"],
-        "scopes": json.loads(row["scopes"]) if row["scopes"] else [],
-        "key_id": row["id"],
-        "name": row["name"],
-    }
+    return principal_from_claims(
+        {
+            "user_id": row["user_id"],
+            "scopes": json.loads(row["scopes"]) if row["scopes"] else [],
+            "key_id": row["id"],
+            "name": row["name"],
+        },
+        credential_type="api_key",
+    )
 
 
 # The API-key endpoints ship as a built-in plugin: the first migration of

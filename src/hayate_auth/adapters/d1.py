@@ -26,6 +26,17 @@ def _to_rows(result: Any) -> list[dict[str, Any]]:
     return [dict(row.to_py()) if hasattr(row, "to_py") else dict(row) for row in rows]
 
 
+def _changes(result: Any) -> int:
+    meta = getattr(result, "meta", None)
+    if meta is not None and hasattr(meta, "to_py"):
+        meta = meta.to_py()
+    if isinstance(meta, dict):
+        changes = meta.get("changes")
+    else:
+        changes = getattr(meta, "changes", None) if meta is not None else None
+    return int(changes) if changes is not None else 0
+
+
 class D1Adapter:
     def __init__(self, database: Any) -> None:
         self._db = database
@@ -74,17 +85,19 @@ class D1Adapter:
     async def update(
         self, model: str, where: Sequence[Where], data: dict[str, Any]
     ) -> dict[str, Any] | None:
+        await self.update_many(model, where, data)
+        return await self.find_one(model, where)
+
+    async def update_many(self, model: str, where: Sequence[Where], data: dict[str, Any]) -> int:
         _validate(model, list(data))
         clause, where_params = _where_sql(model, where)
         assignments = ", ".join(f'"{k}" = ?' for k in data)
-        await self._all(
+        result = await self._all(
             f'UPDATE "{model}" SET {assignments}{clause}', [*data.values(), *where_params]
         )
-        return await self.find_one(model, where)
+        return _changes(result)
 
     async def delete(self, model: str, where: Sequence[Where]) -> int:
         clause, params = _where_sql(model, where)
         result = await self._all(f'DELETE FROM "{model}"{clause}', params)
-        meta = getattr(result, "meta", None)
-        changes = getattr(meta, "changes", None) if meta is not None else None
-        return int(changes) if changes is not None else 0
+        return _changes(result)

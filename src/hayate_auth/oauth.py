@@ -22,6 +22,7 @@ import json
 import secrets
 import time
 from dataclasses import dataclass
+from importlib import import_module
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode
 
@@ -212,7 +213,7 @@ async def _exchange(
     auth: Auth, provider: OAuthProvider, code: str, stored: dict[str, Any]
 ) -> dict[str, Any] | None:
     """Code -> tokens -> a normalized identity dict, or None on failure."""
-    from hayate_fetch import fetch
+    fetch = import_module("hayate_fetch").fetch
 
     token_response = await fetch(
         provider.token_url,

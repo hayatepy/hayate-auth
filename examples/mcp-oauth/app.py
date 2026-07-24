@@ -17,11 +17,11 @@ import os
 
 import mcp.types as types
 from hayate import Context, Hayate
+from hayate_mcp import Authorization, McpMount
 from mcp.server.lowlevel import Server
 
 from hayate_auth import Auth, AuthorizationServer
 from hayate_auth.adapters.sqlite import SQLiteAdapter
-from hayate_mcp import Authorization, McpMount
 
 ISSUER = os.environ.get("ISSUER", "http://127.0.0.1:8931")
 RESOURCE = f"{ISSUER}/mcp"
@@ -37,6 +37,7 @@ auth = Auth(
         login_url="/login",
         consent_url="/consent",
         scopes_supported=("mcp",),
+        resource=RESOURCE,
     ),
 )
 
@@ -84,7 +85,8 @@ LOGIN_HTML = """<!doctype html>
 <h1>Sign in</h1>
 <form id="f">
   <input name="email" type="email" value="demo@example.com" style="width:100%;margin:.25rem 0">
-  <input name="password" type="password" value="demo password 42" style="width:100%;margin:.25rem 0">
+  <input name="password" type="password" value="demo password 42"
+         style="width:100%;margin:.25rem 0">
   <button>Sign in</button> <button type="button" id="up">Sign up</button>
 </form>
 <p id="msg"></p>
@@ -100,7 +102,10 @@ async function call(path) {
   if (res.ok) location.href = q.get("redirect") || "/";
   else document.getElementById("msg").textContent = (await res.json()).title || res.status;
 }
-document.getElementById("f").addEventListener("submit", e => { e.preventDefault(); call("/sign-in/email"); });
+document.getElementById("f").addEventListener("submit", e => {
+  e.preventDefault();
+  call("/sign-in/email");
+});
 document.getElementById("up").addEventListener("click", () => call("/sign-up/email"));
 </script>
 """

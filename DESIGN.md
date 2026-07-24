@@ -390,6 +390,7 @@ hayate-auth/
 | v0.5 | **出荷(2026-07-23)**: **API キー**(better-auth の API Key plugin 参考)。create/verify/list/delete、`ha_` プレフィックス + SHA-256 ハッシュ保存、scope / expiry、`last_used_at`。`Auth.verify_api_key()` | ハッシュのみ保存(平文流出なし)、期限切れ purge、他ユーザーのキー削除不可を固定。**hayate-mcp の RS(`verify_token`)に差し込む統合を実測**(API キーで MCP 保護)。13 テスト |
 | v0.6 | **出荷(2026-07-23)**: **AS モード**(§19 — RFC 8414 / 7591 / OAuth 2.1 + PKCE S256 / RFC 8707、opaque + family rotation)。mcp の RS と合流し「MCP + AS を 1 アプリ」完全形 | 公式 SDK クライアント(`OAuthClientProvider`)の実 HTTP フル一周を CI 常設(examples/mcp-oauth)。MCP Inspector CLI で tools/call 実測・無トークン 401(research/authorization-server.md)。攻撃リグレッション: code 再利用→family 失効 / refresh reuse→全滅 / PKCE / client・resource 混同。ASVS 25→37。47 テスト追加 |
 | v0.7 | **出荷(2026-07-23)**: **magic link**(プラグインとして新規、§20.1)+ **プラグイン API 抽出**(`AuthPlugin(id, routes)`、API キーを内部移植 — §20.2)+ **passkey**(WebAuthn L3、py_webauthn、`[passkey]` extra、§20.3) | soft-webauthn の実 ceremony で py_webauthn の実検証経路をテスト(モックなし)。攻撃面: 列挙防止 / token 混同 / open redirect / origin 不一致 / **sign counter 巻き戻し** / attestation 再送 / owner 越権。ASVS 37→48。19 テスト追加(全 153) |
+| v0.8 | **出荷準備(2026-07-24)**: MCP 2025-11-25 Client ID Metadata Documents、RFC 8707 `resource` 必須化、atomic `update_many`、共通 Principal/Bearer/scope、OpenAPI security、LazyAuth、`py.typed` | better-auth 1.6 の atomic consume/update と 1.7 beta の CIMD 検証を参照。コード/refresh の同時交換は勝者 1 件、CIMD は URL policy・5KiB 上限・redirect/secret 検査、全 176 テスト + strict mypy 28 files ✅ |
 | v1.0 | API 凍結 | 本体 v1.0 より後。基準は本体に倣い外部利用の証拠を要件化 |
 
 ### 決定済み(2026-07-22)
@@ -419,8 +420,8 @@ hayate-auth/
 - hayate-auth はユーザー・セッション・consent の持ち主なので、AS の自然な置き場。
   `Auth.verify_oauth_token` を `hayate_mcp.Authorization(verify_token=...)` に注入すれば
   RS と AS が同一プロセスで完結し、introspection も JWKS も要らない(§19.5)。
-- MCP クライアント(Claude Code / MCP Inspector / VS Code)は **DCR で自己登録**してくる。
-  事前登録の管理画面が要らないのは hosted UI を持たない本パッケージと相性が良い。
+- MCP 2025-11-25 クライアントは **Client ID Metadata Documents を優先**し、未対応 AS
+  には DCR でフォールバックする。どちらも事前登録の管理画面を不要にできる。
 
 ### 19.2 規範とする標準
 
@@ -429,6 +430,7 @@ hayate-auth/
 | 認可コード + PKCE | OAuth 2.1 draft / RFC 6749 / RFC 7636(**S256 のみ**) |
 | AS メタデータ | RFC 8414(`/.well-known/oauth-authorization-server`) |
 | 動的クライアント登録 | RFC 7591(open registration) |
+| Client ID Metadata Documents | draft-ietf-oauth-client-id-metadata-document-00(MCP 2025-11-25 の SHOULD) |
 | Resource Indicators | RFC 8707(`resource` パラメータ、MCP 2025-06-18+ が要求) |
 | セキュリティ BCP | RFC 9700(code 単回使用、refresh rotation + 再利用検知、exact redirect) |
 | loopback リダイレクト | RFC 8252 §7.3(ポート可変。MCP クライアントの実態) |
@@ -471,6 +473,11 @@ hayate-auth/
    RFC 8707 の audience 制約を強制する(mcp 注入用には
    `auth.oauth_token_verifier(resource=...)` が束縛済み callable を返す)。
 7. **grant は authorization_code + refresh_token のみ**。response_type は `code` のみ。
+8. **Client ID Metadata Documents は注入 fetch**。
+   `ClientIdMetadataDocuments(fetch, allow_url=...)` が有効なときだけ AS metadata に
+   `client_id_metadata_document_supported=true` を載せる。ライブラリは HTTPS URL、
+   exact client_id、same-origin/loopback redirect、secret 禁止、JSON、5KiB 上限を検査し、
+   DNS 解決・egress policy・redirect 拒否は runtime-aware な fetcher に委譲する。
 
 ### 19.4 セキュリティ決定(攻撃リグレッションで固定するもの)
 
@@ -482,6 +489,8 @@ hayate-auth/
   トークン **family を全失効**させてから `invalid_grant`(RFC 9700 §4.2 の防御)。
 - **refresh token は rotation 必須**。交換ごとに新 family 行を発行し旧行を revoked に。
   revoked 行への refresh 再提示 = 盗難の証拠として **family 全滅**(RFC 9700 §4.14)。
+- code の `used=0→1` と refresh の `revoked=0→1` は adapter の atomic
+  `update_many()` 1 操作で claim し、affected rows が 1 の要求だけが token を mint する。
 - code / access / refresh / client_secret はすべて `secrets.token_urlsafe` +
   **DB には SHA-256 のみ**。client_secret の照合は `hmac.compare_digest`。
 - token / register エンドポイントは cookie 非依存なので CSRF 対象外(既存 csrf.py の

@@ -4,11 +4,12 @@ Standards-first authentication for [hayate](https://github.com/hayatepy/hayate) 
 a mountable, better-auth-style auth handler built on the WHATWG Request/Response
 model.
 
-> **Status: alpha (0.7.x).** Email+password, sessions, CSRF, email
+> **Status: alpha (0.8.x).** Email+password, sessions, CSRF, email
 > verification, password reset, **OAuth 2.1 + PKCE** (Google / GitHub), **TOTP
 > two-factor**, **API keys**, an **OAuth 2.1 authorization server** (AS
-> mode: RFC 8414 metadata, RFC 7591 dynamic registration, PKCE-only code +
-> refresh grants), **magic links**, and **passkeys** (WebAuthn L3, `[passkey]`
+> mode: RFC 8414 metadata, RFC 7591 dynamic registration, MCP Client ID
+> Metadata Documents, PKCE-only code + refresh grants), **magic links**, and
+> **passkeys** (WebAuthn L3, `[passkey]`
 > extra) are implemented and attack-regression-tested; a `generate` CLI, a
 > plugin API, and a Cloudflare D1 adapter ship too. Not yet security-audited —
 > see [SECURITY.md](SECURITY.md). The internal design memo (Japanese) lives in
@@ -101,6 +102,7 @@ auth = Auth(
         login_url="/login",
         consent_url="/consent",
         scopes_supported=("mcp",),
+        resource="https://app.example.com/mcp",
     ),
 )
 ```
@@ -119,9 +121,47 @@ McpMount(server, authorization=Authorization(
 )).register(app)
 ```
 
+MCP 2025-11-25 recommends Client ID Metadata Documents before DCR. Enable
+them with an injected fetcher so your deployment controls DNS and egress:
+
+```python
+from hayate_auth import ClientIdMetadataDocuments
+
+authorization_server = AuthorizationServer(
+    # issuer/login_url/consent_url/scopes_supported/resource as above
+    client_id_metadata_documents=ClientIdMetadataDocuments(
+        fetch_client_metadata,  # async URL -> hayate.Response; must reject redirects
+        allow_url=outbound_client_policy,
+    ),
+)
+```
+
+hayate-auth validates HTTPS URL-form client IDs, exact `client_id`, same-origin
+or loopback redirects, public-client metadata, JSON content type, and a 5 KiB
+body limit. The fetcher remains responsible for DNS-level SSRF protection.
+
 API keys are the lighter-weight bridge to the same resource server —
 `verify_token=auth.verify_api_key` protects an MCP server with a static key
 instead of the full OAuth dance.
+
+REST and generated OpenAPI share the same authorization declaration:
+
+```python
+from hayate_openapi import OpenApi
+
+@app.get("/documents", auth.require_oauth_token(
+    "documents:read", resource="https://app.example.com/mcp"
+))
+async def documents(c):
+    return c.json({"subject": c.get("principal")["subject"]})
+
+OpenApi(
+    app,
+    title="API",
+    version="1",
+    security_schemes=auth.openapi_security_schemes(),
+)
+```
 
 With TOTP enabled, `/sign-in/email` returns `{"two_factor_required": true}` plus
 a short-lived signed challenge cookie instead of a session; the client then
@@ -173,6 +213,9 @@ auth = Auth(
 - Coverage ledger: [docs/asvs.md](docs/asvs.md) (OWASP ASVS V6/V7, ratcheted).
 - **You must rate-limit** `/api/auth/*` (hayate middleware or your
   infrastructure): brute-force throttling is deliberately out of core.
+- Authorization-server adapters must implement atomic `update_many()` and
+  return the affected-row count. This prevents concurrent authorization-code
+  or refresh-token redemption from minting multiple token families.
 
 ## License
 

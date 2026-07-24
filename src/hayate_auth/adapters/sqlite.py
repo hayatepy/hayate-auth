@@ -64,7 +64,7 @@ class SQLiteAdapter:
     def close(self) -> None:
         self._conn.close()
 
-    async def _run(self, fn: Callable[[], Any]) -> Any:
+    async def _run[T](self, fn: Callable[[], T]) -> T:
         if sys.platform == "emscripten":  # no threads on Pyodide
             return fn()
         return await asyncio.to_thread(fn)
@@ -118,18 +118,21 @@ class SQLiteAdapter:
     async def update(
         self, model: str, where: Sequence[Where], data: dict[str, Any]
     ) -> dict[str, Any] | None:
+        await self.update_many(model, where, data)
+        return await self.find_one(model, where)
+
+    async def update_many(self, model: str, where: Sequence[Where], data: dict[str, Any]) -> int:
         _validate(model, list(data))
         clause, where_params = _where_sql(model, where)
         assignments = ", ".join(f'"{k}" = ?' for k in data)
         sql = f'UPDATE "{model}" SET {assignments}{clause}'
         params = [*data.values(), *where_params]
 
-        def run() -> None:
+        def run() -> int:
             with self._lock, self._conn:
-                self._conn.execute(sql, params)
+                return self._conn.execute(sql, params).rowcount
 
-        await self._run(run)
-        return await self.find_one(model, where)
+        return await self._run(run)
 
     async def delete(self, model: str, where: Sequence[Where]) -> int:
         clause, params = _where_sql(model, where)
