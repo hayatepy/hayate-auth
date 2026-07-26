@@ -46,6 +46,14 @@ from .cimd import (
     is_metadata_client_id,
     resolve_metadata_client,
 )
+from .dpop import (
+    AdapterDPoPReplayStore,
+    DPoPConfig,
+    DPoPProof,
+    DPoPValidationError,
+    validate_dpop_request,
+    validate_jkt,
+)
 from .routes import _json_response, _read_json_object
 
 if TYPE_CHECKING:
@@ -112,6 +120,7 @@ class AuthorizationServer:
     resource: str | None = None
     resource_servers: tuple[OAuthResourceServer, ...] = ()
     client_id_metadata_documents: ClientIdMetadataDocuments | None = None
+    dpop: DPoPConfig | None = None
     access_token_ttl: timedelta = timedelta(hours=1)
     refresh_token_ttl: timedelta = timedelta(days=30)
     code_ttl: timedelta = timedelta(minutes=5)
@@ -346,6 +355,8 @@ def metadata_document(auth: Auth) -> dict[str, Any]:
         doc["scopes_supported"] = list(config.scopes_supported)
     if config.client_id_metadata_documents is not None:
         doc["client_id_metadata_document_supported"] = True
+    if config.dpop is not None:
+        doc["dpop_signing_alg_values_supported"] = list(config.dpop.algorithms)
     return doc
 
 
@@ -397,6 +408,25 @@ async def authorize(auth: Auth, request: Request) -> Response:
         return _error_redirect(
             redirect_uri, state, "invalid_request", "code_challenge_method must be S256"
         )
+    dpop_jkt = params.get("dpop_jkt")
+    if dpop_jkt is not None:
+        if config.dpop is None:
+            return _error_redirect(redirect_uri, state, "invalid_request", "DPoP is not supported")
+        try:
+            dpop_jkt = validate_jkt(dpop_jkt)
+        except ValueError as error:
+            return _error_redirect(redirect_uri, state, "invalid_request", str(error))
+    if (
+        config.dpop is not None
+        and (config.dpop.require_bound_tokens or bool(client["dpop_bound_access_tokens"]))
+        and dpop_jkt is None
+    ):
+        return _error_redirect(
+            redirect_uri,
+            state,
+            "invalid_request",
+            "dpop_jkt is required for this client",
+        )
     resources = params.get_all("resource")
     if len(resources) > 1:
         return _error_redirect(
@@ -444,6 +474,7 @@ async def authorize(auth: Auth, request: Request) -> Response:
             state=state,
             code_challenge=code_challenge,
             resource=resource,
+            dpop_jkt=dpop_jkt,
         )
 
     from hayate.cookies import serialize_set_cookie
@@ -459,6 +490,7 @@ async def authorize(auth: Auth, request: Request) -> Response:
             "state": state,
             "code_challenge": code_challenge,
             "resource": resource,
+            "dpop_jkt": dpop_jkt,
             "expires": int(time.time()) + AS_COOKIE_TTL_SECONDS,
         },
     )
@@ -495,6 +527,7 @@ async def _code_redirect(
     state: str | None,
     code_challenge: str,
     resource: str | None,
+    dpop_jkt: str | None,
     cookies: list[str] | None = None,
 ) -> Response:
     code = await _mint_code(
@@ -506,6 +539,7 @@ async def _code_redirect(
         scope=scope,
         code_challenge=code_challenge,
         resource=resource,
+        dpop_jkt=dpop_jkt,
     )
     target = _with_params(redirect_uri, code=code, state=state)
     headers: list[tuple[str, str]] = [("location", target), ("cache-control", "no-store")]
@@ -524,6 +558,7 @@ async def _mint_code(
     scope: str,
     code_challenge: str,
     resource: str | None,
+    dpop_jkt: str | None,
 ) -> str:
     config = auth.authorization_server
     assert config is not None
@@ -542,6 +577,7 @@ async def _mint_code(
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
             "resource": resource,
+            "dpop_jkt": dpop_jkt,
             "used": 0,
             "family_id": None,
             "expires_at": sessions.isoformat(stamp + config.code_ttl),
@@ -629,6 +665,7 @@ async def consent(auth: Auth, request: Request) -> Response:
         scope=scope,
         code_challenge=pending["code_challenge"],
         resource=pending.get("resource"),
+        dpop_jkt=pending.get("dpop_jkt"),
     )
     granted = _with_params(pending["redirect_uri"], code=code, state=pending.get("state"))
     return _json_response({"redirect_uri": granted}, cookies=[clear])
@@ -659,9 +696,9 @@ async def token(auth: Auth, request: Request) -> Response:
 
     grant_type = form.get("grant_type")
     if grant_type == "authorization_code":
-        return await _token_authorization_code(auth, form, client)
+        return await _token_authorization_code(auth, request, form, client)
     if grant_type == "refresh_token":
-        return await _token_refresh(auth, form, client)
+        return await _token_refresh(auth, request, form, client)
     return _oauth_error(400, "unsupported_grant_type")
 
 
@@ -706,7 +743,37 @@ async def _check_client(
     return client
 
 
-async def _token_authorization_code(auth: Auth, form: Any, client: dict[str, Any]) -> Response:
+async def _token_dpop(
+    auth: Auth,
+    request: Request,
+    *,
+    expected_jkt: str | None,
+    required: bool,
+) -> DPoPProof | Response | None:
+    config = auth.authorization_server
+    assert config is not None
+    if config.dpop is None:
+        if request.headers.has("dpop"):
+            return _oauth_error(400, "invalid_dpop_proof", "DPoP is not supported")
+        return None
+    replay_store = (
+        config.dpop.replay_store or auth._dpop_replay_store or AdapterDPoPReplayStore(auth.adapter)
+    )
+    try:
+        return await validate_dpop_request(
+            request,
+            config=config.dpop,
+            replay_store=replay_store,
+            expected_jkt=expected_jkt,
+            required=required,
+        )
+    except DPoPValidationError as error:
+        return _oauth_error(400, error.error, error.description)
+
+
+async def _token_authorization_code(
+    auth: Auth, request: Request, form: Any, client: dict[str, Any]
+) -> Response:
     code = form.get("code")
     verifier = form.get("code_verifier")
     if not isinstance(code, str) or not code or not isinstance(verifier, str) or not verifier:
@@ -777,6 +844,19 @@ async def _token_authorization_code(auth: Auth, form: Any, client: dict[str, Any
     ):
         return _oauth_error(400, "invalid_target")
 
+    proof = await _token_dpop(
+        auth,
+        request,
+        expected_jkt=row["dpop_jkt"],
+        required=bool(
+            row["dpop_jkt"]
+            or client["dpop_bound_access_tokens"]
+            or (config.dpop is not None and config.dpop.require_bound_tokens)
+        ),
+    )
+    if isinstance(proof, Response):
+        return proof
+
     family = new_id()
     claimed = await auth.adapter.update_many(
         "oauth_code",
@@ -796,11 +876,14 @@ async def _token_authorization_code(auth: Auth, form: Any, client: dict[str, Any
         grant_id=grant_id,
         scope=row["scope"],
         resource=row["resource"],
+        dpop_jkt=proof.jkt if proof is not None else None,
         authorization_code_id=row["id"],
     )
 
 
-async def _token_refresh(auth: Auth, form: Any, client: dict[str, Any]) -> Response:
+async def _token_refresh(
+    auth: Auth, request: Request, form: Any, client: dict[str, Any]
+) -> Response:
     presented = form.get("refresh_token")
     if not isinstance(presented, str) or not presented:
         return _oauth_error(400, "invalid_request", "refresh_token is required")
@@ -870,6 +953,21 @@ async def _token_refresh(auth: Auth, form: Any, client: dict[str, Any]) -> Respo
     else:
         scope = row["scope"]
 
+    public_client = client["token_endpoint_auth_method"] == "none"
+    expected_jkt = row["dpop_jkt"] if public_client else None
+    proof = await _token_dpop(
+        auth,
+        request,
+        expected_jkt=expected_jkt,
+        required=bool(
+            expected_jkt
+            or client["dpop_bound_access_tokens"]
+            or (config.dpop is not None and config.dpop.require_bound_tokens)
+        ),
+    )
+    if isinstance(proof, Response):
+        return proof
+
     claimed = await auth.adapter.update_many(
         "oauth_token",
         [Where("id", row["id"]), Where("revoked", TOKEN_ACTIVE)],
@@ -885,6 +983,7 @@ async def _token_refresh(auth: Auth, form: Any, client: dict[str, Any]) -> Respo
         grant_id=grant_id,
         scope=scope,
         resource=row["resource"],
+        dpop_jkt=proof.jkt if proof is not None else None,
         rotated_token_id=row["id"],
     )
 
@@ -898,6 +997,7 @@ async def _mint_tokens(
     grant_id: str,
     scope: str | None,
     resource: str | None,
+    dpop_jkt: str | None,
     authorization_code_id: str | None = None,
     rotated_token_id: str | None = None,
 ) -> Response:
@@ -919,6 +1019,7 @@ async def _mint_tokens(
             "grant_id": grant_id,
             "scope": scope,
             "resource": resource,
+            "dpop_jkt": dpop_jkt,
             "access_expires_at": sessions.isoformat(stamp + config.access_token_ttl),
             "refresh_expires_at": (
                 sessions.isoformat(stamp + config.refresh_token_ttl) if refresh else None
@@ -962,7 +1063,7 @@ async def _mint_tokens(
         return _oauth_error(400, "invalid_grant")
     body: dict[str, Any] = {
         "access_token": access,
-        "token_type": "Bearer",
+        "token_type": "DPoP" if dpop_jkt is not None else "Bearer",
         "expires_in": int(config.access_token_ttl.total_seconds()),
     }
     if scope:
@@ -1191,7 +1292,11 @@ async def introspect_token(auth: Auth, request: Request) -> Response:
     if row["scope"]:
         body["scope"] = row["scope"]
     if kind == "access_token":
-        body["token_type"] = "Bearer"
+        if row["dpop_jkt"] is not None:
+            body["token_type"] = "DPoP"
+            body["cnf"] = {"jkt": row["dpop_jkt"]}
+        else:
+            body["token_type"] = "Bearer"
     return _oauth_json_response(body)
 
 
@@ -1342,6 +1447,19 @@ async def register_client(auth: Auth, request: Request) -> Response:
     scope = data.get("scope")
     if scope is not None and not isinstance(scope, str):
         return _oauth_error(400, "invalid_client_metadata", "scope must be a string")
+    dpop_bound_access_tokens = data.get("dpop_bound_access_tokens", False)
+    if not isinstance(dpop_bound_access_tokens, bool):
+        return _oauth_error(
+            400,
+            "invalid_client_metadata",
+            "dpop_bound_access_tokens must be a boolean",
+        )
+    if dpop_bound_access_tokens and auth.authorization_server.dpop is None:
+        return _oauth_error(
+            400,
+            "invalid_client_metadata",
+            "dpop_bound_access_tokens is not supported",
+        )
 
     client_id = secrets.token_urlsafe(24)
     client_secret = None if method == "none" else secrets.token_urlsafe(32)
@@ -1357,6 +1475,7 @@ async def register_client(auth: Auth, request: Request) -> Response:
             "token_endpoint_auth_method": method,
             "grant_types": json.dumps(grant_types),
             "scope": scope,
+            "dpop_bound_access_tokens": int(dpop_bound_access_tokens),
             "created_at": sessions.isoformat(stamp),
             "updated_at": sessions.isoformat(stamp),
         },
@@ -1369,6 +1488,7 @@ async def register_client(auth: Auth, request: Request) -> Response:
         "token_endpoint_auth_method": method,
         "grant_types": grant_types,
         "response_types": ["code"],
+        "dpop_bound_access_tokens": dpop_bound_access_tokens,
     }
     if client_secret is not None:
         # The secret appears here and never again (hash-only at rest).
@@ -1404,13 +1524,13 @@ async def verify_token(
         return None
     from .principal import principal_from_claims
 
-    return principal_from_claims(
-        {
-            "user_id": row["user_id"],
-            "client_id": row["client_id"],
-            "scopes": (row["scope"] or "").split(),
-            "token_id": row["id"],
-            "resource": row["resource"],
-        },
-        credential_type="oauth",
-    )
+    claims = {
+        "user_id": row["user_id"],
+        "client_id": row["client_id"],
+        "scopes": (row["scope"] or "").split(),
+        "token_id": row["id"],
+        "resource": row["resource"],
+    }
+    if row["dpop_jkt"] is not None:
+        claims["dpop_jkt"] = row["dpop_jkt"]
+    return principal_from_claims(claims, credential_type="oauth")

@@ -83,6 +83,15 @@ class Auth:
         # AS mode (v0.6): an AuthorizationServer config, or None. When set,
         # the OAuth 2.1 endpoints and the RFC 8414 well-known route go live.
         self.authorization_server = authorization_server
+        self._dpop_replay_store: Any | None = None
+        if (
+            authorization_server is not None
+            and authorization_server.dpop is not None
+            and authorization_server.dpop.replay_store is None
+        ):
+            from .dpop import AdapterDPoPReplayStore
+
+            self._dpop_replay_store = AdapterDPoPReplayStore(adapter)
         # Passkeys (v0.7): a PasskeyConfig, or None -> routes answer 404.
         self.passkey = passkey
         # Route table = built-ins + built-in plugins + user plugins

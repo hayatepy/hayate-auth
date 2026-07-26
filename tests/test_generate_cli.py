@@ -54,6 +54,16 @@ def test_upgrade_from_091_preserves_existing_two_factor(capsys):
             'ON "oauth_token"(user_id, client_id);\n',
             "",
         )
+        .replace(
+            "  dpop_bound_access_tokens INTEGER NOT NULL DEFAULT 0,\n",
+            "",
+        )
+        .replace("  dpop_jkt TEXT,\n", "")
+        .replace(
+            "CREATE UNIQUE INDEX IF NOT EXISTS verification_identifier_value_hash\n"
+            '  ON "verification"(identifier, value_hash);\n',
+            "",
+        )
     )
     connection = sqlite3.connect(":memory:")
     connection.executescript(legacy_schema)

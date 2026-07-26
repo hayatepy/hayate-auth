@@ -63,6 +63,7 @@ MODELS: dict[str, tuple[str, ...]] = {
         "token_endpoint_auth_method",
         "grant_types",
         "scope",
+        "dpop_bound_access_tokens",
         "created_at",
         "updated_at",
     ),
@@ -77,6 +78,7 @@ MODELS: dict[str, tuple[str, ...]] = {
         "code_challenge",
         "code_challenge_method",
         "resource",
+        "dpop_jkt",
         "used",
         "family_id",
         "expires_at",
@@ -92,6 +94,7 @@ MODELS: dict[str, tuple[str, ...]] = {
         "grant_id",
         "scope",
         "resource",
+        "dpop_jkt",
         "access_expires_at",
         "refresh_expires_at",
         "revoked",
@@ -163,6 +166,8 @@ CREATE TABLE IF NOT EXISTS "verification" (
   expires_at TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS verification_identifier_value_hash
+  ON "verification"(identifier, value_hash);
 CREATE TABLE IF NOT EXISTS "two_factor" (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL UNIQUE REFERENCES "user"(id) ON DELETE CASCADE,
@@ -195,6 +200,7 @@ CREATE TABLE IF NOT EXISTS "oauth_client" (
   token_endpoint_auth_method TEXT NOT NULL,
   grant_types TEXT NOT NULL,
   scope TEXT,
+  dpop_bound_access_tokens INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -209,6 +215,7 @@ CREATE TABLE IF NOT EXISTS "oauth_code" (
   code_challenge TEXT NOT NULL,
   code_challenge_method TEXT NOT NULL DEFAULT 'S256',
   resource TEXT,
+  dpop_jkt TEXT,
   used INTEGER NOT NULL DEFAULT 0,
   family_id TEXT,
   expires_at TEXT NOT NULL,
@@ -225,6 +232,7 @@ CREATE TABLE IF NOT EXISTS "oauth_token" (
   grant_id TEXT NOT NULL,
   scope TEXT,
   resource TEXT,
+  dpop_jkt TEXT,
   access_expires_at TEXT NOT NULL,
   refresh_expires_at TEXT,
   revoked INTEGER NOT NULL DEFAULT 0,
@@ -307,23 +315,37 @@ UPDATE "session"
   WHERE last_active_at IS NULL;
 """
 
+SENDER_CONSTRAINED_OAUTH_MIGRATION = """\
+ALTER TABLE "oauth_client"
+  ADD COLUMN dpop_bound_access_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "oauth_code"
+  ADD COLUMN dpop_jkt TEXT;
+ALTER TABLE "oauth_token"
+  ADD COLUMN dpop_jkt TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS verification_identifier_value_hash
+  ON "verification"(identifier, value_hash);
+"""
+
 MIGRATIONS = {
     "0.9.1": {
         "sqlite": (
             TOTP_SINGLE_USE_MIGRATION
             + OAUTH_GRANT_REVOCATION_MIGRATION
             + SESSION_INACTIVITY_MIGRATION
+            + SENDER_CONSTRAINED_OAUTH_MIGRATION
         ),
         "postgres": (
             TOTP_SINGLE_USE_MIGRATION
             + OAUTH_GRANT_REVOCATION_MIGRATION
             + SESSION_INACTIVITY_MIGRATION
             + 'ALTER TABLE "session" ALTER COLUMN last_active_at SET NOT NULL;\n'
+            + SENDER_CONSTRAINED_OAUTH_MIGRATION
         ),
         "d1": (
             TOTP_SINGLE_USE_MIGRATION
             + OAUTH_GRANT_REVOCATION_MIGRATION
             + SESSION_INACTIVITY_MIGRATION
+            + SENDER_CONSTRAINED_OAUTH_MIGRATION
         ),
     }
 }

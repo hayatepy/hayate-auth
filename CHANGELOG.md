@@ -18,6 +18,9 @@ All notable changes to hayate-auth are documented here.
 - Add independently enforced session inactivity expiry, bounded atomic
   activity touches, fresh-session-protected listing and revocation endpoints,
   and explicit administrative session revocation primitives.
+- Add an opt-in RFC 9449 DPoP profile across authorization-code, access-token,
+  public refresh-token, RFC 7662 introspection, ASGI, and Python Workers
+  runtimes, with ES256 delegated to `cryptography` or WebCrypto.
 
 ### Security
 
@@ -37,6 +40,9 @@ All notable changes to hayate-auth are documented here.
 - Store no session token material in management responses, scope user-driven
   revocation by both session and owner, and make concurrent revocation win
   against an in-flight activity touch.
+- Bind DPoP authorization codes and public refresh-token families to an RFC
+  7638 thumbprint, reject token/proof/key replay, and persist proof identifiers
+  behind a database uniqueness boundary shared by replicas and isolates.
 
 ## [0.9.1] - 2026-07-26
 

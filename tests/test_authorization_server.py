@@ -13,6 +13,7 @@ from datetime import timedelta
 from urllib.parse import parse_qs, quote_plus, urlencode, urlsplit
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric import ec
 from hayate import Request, Response
 
 from conftest import cookie_pair, request_json
@@ -20,10 +21,13 @@ from hayate_auth import (
     Auth,
     AuthorizationServer,
     ClientIdMetadataDocuments,
+    DPoPConfig,
     OAuthResourceServer,
     ScryptBackend,
     Where,
 )
+from hayate_auth.dpop import jwk_thumbprint
+from test_dpop import b64url, make_proof
 
 BASE = "/api/auth"
 
@@ -111,9 +115,19 @@ def location_params(location: str) -> dict:
     return {key: values[0] for key, values in parse_qs(urlsplit(location).query).items()}
 
 
-async def obtain_code(auth, cookie, client, *, verifier, scope=None, resource=None) -> str:
+async def obtain_code(
+    auth, cookie, client, *, verifier, scope=None, resource=None, dpop_jkt=None
+) -> str:
+    extra = {"dpop_jkt": dpop_jkt} if dpop_jkt is not None else {}
     res = await auth.fetch(
-        authorize_request(client, verifier=verifier, cookie=cookie, scope=scope, resource=resource)
+        authorize_request(
+            client,
+            verifier=verifier,
+            cookie=cookie,
+            scope=scope,
+            resource=resource,
+            **extra,
+        )
     )
     assert res.status == 302
     location = res.headers.get("location")
@@ -138,7 +152,7 @@ async def exchange(
         "code_verifier": verifier,
         "redirect_uri": redirect_uri or client["redirect_uris"][0],
     }
-    if headers is None:
+    if headers is None or "authorization" not in headers:
         data["client_id"] = client["client_id"]
     if resource is not None:
         data["resource"] = resource
@@ -721,6 +735,162 @@ async def test_token_response_is_uncacheable(auth_as):
     code = await obtain_code(auth_as, cookie, client, verifier=verifier)
     res = await exchange(auth_as, client, code, verifier=verifier)
     assert res.headers.get("cache-control") == "no-store"
+
+
+async def test_dpop_code_access_refresh_and_introspection_are_end_to_end_bound(adapter):
+    resource = "https://mcp.example/mcp"
+    resource_server = OAuthResourceServer(
+        client_id="mcp-resource-server",
+        client_secret="resource-server-secret-at-least-32-characters",
+        resource=resource,
+    )
+    auth = make_auth(
+        adapter,
+        dpop=DPoPConfig(),
+        resource=resource,
+        scopes_supported=("mcp",),
+        resource_servers=(resource_server,),
+    )
+    metadata = await auth.fetch(Request("http://localhost/.well-known/oauth-authorization-server"))
+    assert (await metadata.json())["dpop_signing_alg_values_supported"] == ["ES256"]
+
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    public = private_key.public_key().public_numbers()
+    key = (
+        private_key,
+        {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": b64url(public.x.to_bytes(32)),
+            "y": b64url(public.y.to_bytes(32)),
+        },
+    )
+    jkt = jwk_thumbprint(key[1])
+    client = await register(auth, dpop_bound_access_tokens=True)
+    assert client["dpop_bound_access_tokens"] is True
+    cookie = await signed_in_cookie(auth)
+    verifier = "dpop-code-verifier-with-sufficient-length-42"
+    code = await obtain_code(
+        auth,
+        cookie,
+        client,
+        verifier=verifier,
+        scope="mcp",
+        resource=resource,
+        dpop_jkt=jkt,
+    )
+
+    missing = await exchange(auth, client, code, verifier=verifier, resource=resource)
+    assert missing.status == 400
+    assert (await missing.json())["error"] == "invalid_dpop_proof"
+
+    token_proof = make_proof(
+        key,
+        method="POST",
+        url=f"http://localhost{BASE}/oauth2/token",
+        jti="authorization-code-proof",
+    )
+    issued = await exchange(
+        auth,
+        client,
+        code,
+        verifier=verifier,
+        resource=resource,
+        headers={"dpop": token_proof},
+    )
+    assert issued.status == 200, await issued.text()
+    tokens = await issued.json()
+    assert tokens["token_type"] == "DPoP"
+    claims = await auth.verify_oauth_token(tokens["access_token"], resource=resource)
+    assert claims["dpop_jkt"] == jkt
+
+    introspected = await auth.fetch(
+        request_form(
+            f"{BASE}/oauth2/introspect",
+            {"token": tokens["access_token"]},
+            headers=basic_auth(resource_server.client_id, resource_server.client_secret),
+        )
+    )
+    introspection = await introspected.json()
+    assert introspection["token_type"] == "DPoP"
+    assert introspection["cnf"] == {"jkt": jkt}
+
+    other_private = ec.generate_private_key(ec.SECP256R1())
+    other_public = other_private.public_key().public_numbers()
+    other_key = (
+        other_private,
+        {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": b64url(other_public.x.to_bytes(32)),
+            "y": b64url(other_public.y.to_bytes(32)),
+        },
+    )
+    wrong_rotation = await auth.fetch(
+        request_form(
+            f"{BASE}/oauth2/token",
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": tokens["refresh_token"],
+                "client_id": client["client_id"],
+                "resource": resource,
+            },
+            headers={
+                "dpop": make_proof(
+                    other_key,
+                    method="POST",
+                    url=f"http://localhost{BASE}/oauth2/token",
+                    jti="wrong-refresh-key",
+                )
+            },
+        )
+    )
+    assert wrong_rotation.status == 400
+    assert (await wrong_rotation.json())["error"] == "invalid_dpop_proof"
+
+    rotated = await auth.fetch(
+        request_form(
+            f"{BASE}/oauth2/token",
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": tokens["refresh_token"],
+                "client_id": client["client_id"],
+                "resource": resource,
+            },
+            headers={
+                "dpop": make_proof(
+                    key,
+                    method="POST",
+                    url=f"http://localhost{BASE}/oauth2/token",
+                    jti="valid-refresh-key",
+                )
+            },
+        )
+    )
+    assert rotated.status == 200, await rotated.text()
+    assert (await rotated.json())["token_type"] == "DPoP"
+
+
+async def test_dpop_support_preserves_current_bearer_mcp_clients(adapter):
+    auth = make_auth(adapter, dpop=DPoPConfig())
+    tokens, _client, _cookie = await full_grant(auth, scope="mcp")
+    assert tokens["token_type"] == "Bearer"
+
+
+async def test_dpop_bound_registration_requires_server_support_and_code_binding(auth_as):
+    unsupported = await auth_as.fetch(
+        request_json(
+            f"{BASE}/oauth2/register",
+            {
+                "redirect_uris": ["https://client.example/cb"],
+                "token_endpoint_auth_method": "none",
+                "grant_types": ["authorization_code"],
+                "dpop_bound_access_tokens": True,
+            },
+        )
+    )
+    assert unsupported.status == 400
+    assert (await unsupported.json())["error"] == "invalid_client_metadata"
 
 
 async def test_token_requires_form_content_type_and_rejects_other_auth_schemes(auth_as):
