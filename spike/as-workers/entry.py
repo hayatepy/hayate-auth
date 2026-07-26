@@ -33,7 +33,7 @@ from hayate import Context, Hayate
 from hayate.adapters.workers import to_workers
 from workers import env
 
-from hayate_auth import Auth, AuthorizationServer
+from hayate_auth import Auth, AuthorizationServer, ScryptBackend
 from hayate_auth.adapters.d1 import D1Adapter
 
 app = Hayate()
@@ -45,9 +45,16 @@ def get_auth() -> Auth:
     global _auth
     if _auth is None:
         issuer = getattr(env, "ISSUER", None) or "http://127.0.0.1:8787"
+        # Functional acceptance profiles can lower the KDF cost explicitly so
+        # a constrained local workerd stays focused on the protocol under test.
+        # With no spike-only variable, deployed applications retain the secure
+        # Auth default (scrypt log_n=17).
+        spike_log_n = getattr(env, "HAYATE_AUTH_SPIKE_KDF_LOG_N", None)
+        crypto = ScryptBackend(log_n=int(spike_log_n)) if spike_log_n else None
         _auth = Auth(
             secret="spike-secret-not-for-production",
             adapter=D1Adapter(env.DB),
+            crypto=crypto,
             authorization_server=AuthorizationServer(
                 issuer=issuer,
                 login_url="/login",

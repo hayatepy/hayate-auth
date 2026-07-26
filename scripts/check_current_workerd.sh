@@ -63,7 +63,9 @@ test -e python_modules/hayate_fetch
 test -e python_modules/hayate_mcp
 
 npx --no-install wrangler dev \
-  --port "${port}" --persist-to "${state_dir}" >"${log_file}" 2>&1 &
+  --port "${port}" \
+  --persist-to "${state_dir}" \
+  --var HAYATE_AUTH_SPIKE_KDF_LOG_N:14 >"${log_file}" 2>&1 &
 server_pid=$!
 
 ready=false
@@ -104,39 +106,23 @@ def request(
     data: dict[str, Any],
     *,
     cookie: str | None = None,
-    retry_dev_disconnect: bool = False,
 ) -> tuple[int, dict[str, Any], str | None]:
-    # Production-cost scrypt is intentionally slow in Pyodide; this is a
-    # correctness gate, not a latency benchmark.
-    for attempt in range(2):
-        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=120)
-        headers = {"content-type": "application/json"}
-        if cookie is not None:
-            headers["cookie"] = cookie
-        connection.request("POST", path, json.dumps(data), headers)
-        response = connection.getresponse()
-        raw_body = response.read()
-        set_cookie = response.getheader("set-cookie")
-        status = response.status
-        connection.close()
-
-        if (
-            retry_dev_disconnect
-            and attempt == 0
-            and status == 500
-            and b"Network connection lost" in raw_body
-        ):
-            print(f"{path}: reconnecting after a Miniflare workerd disconnect")
-            time.sleep(1)
-            continue
-        try:
-            body = json.loads(raw_body)
-        except json.JSONDecodeError as exc:
-            raise AssertionError(
-                f"{path} returned HTTP {status} with non-JSON body {raw_body!r}"
-            ) from exc
-        return status, body, set_cookie
-    raise AssertionError(f"{path} did not return after a dev-server reconnect")
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=120)
+    headers = {"content-type": "application/json"}
+    if cookie is not None:
+        headers["cookie"] = cookie
+    connection.request("POST", path, json.dumps(data), headers)
+    response = connection.getresponse()
+    raw_body = response.read()
+    try:
+        body = json.loads(raw_body)
+    except json.JSONDecodeError as exc:
+        raise AssertionError(
+            f"{path} returned HTTP {response.status} with non-JSON body {raw_body!r}"
+        ) from exc
+    set_cookie = response.getheader("set-cookie")
+    connection.close()
+    return response.status, body, set_cookie
 
 
 def cookie_pair(header: str | None) -> str:
@@ -157,12 +143,7 @@ session = cookie_pair(header)
 status, enrollment, _ = request("/api/auth/two-factor/enable", {}, cookie=session)
 assert status == 200
 code = totp.code_at(enrollment["secret"], time.time())
-status, _, _ = request(
-    "/api/auth/two-factor/verify",
-    {"code": code},
-    cookie=session,
-    retry_dev_disconnect=True,
-)
+status, _, _ = request("/api/auth/two-factor/verify", {"code": code}, cookie=session)
 assert status == 200
 
 status, _, header = request(
