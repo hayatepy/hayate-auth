@@ -1,8 +1,9 @@
 """AS mode: an OAuth 2.1 Authorization Server (DESIGN §19, v0.6).
 
-Normative: OAuth 2.1 draft / RFC 6749, RFC 7636 (PKCE, S256 only), RFC 8414
-(AS metadata), RFC 7591 (Dynamic Client Registration), RFC 8707 (Resource
-Indicators), RFC 9700 (Security BCP), RFC 8252 §7.3 (loopback redirects).
+Normative: OAuth 2.1 draft / RFC 6749, RFC 7636 (PKCE, S256 only), RFC 7009
+(revocation), RFC 7662 (introspection), RFC 8414 (AS metadata), RFC 7591
+(Dynamic Client Registration), RFC 8707 (Resource Indicators), RFC 9700
+(Security BCP), RFC 8252 §7.3 (loopback redirects).
 
 This is the token-issuing half of the "MCP server + its AS in one app"
 story: hayate-mcp's ``Authorization(verify_token=...)`` takes
@@ -11,8 +12,8 @@ story: hayate-mcp's ``Authorization(verify_token=...)`` takes
 Every credential this module mints (authorization codes, access and refresh
 tokens, client secrets) is a ``secrets.token_urlsafe`` value stored only as
 its SHA-256 — the same discipline as sessions and API keys. Access tokens
-are opaque: the resource server lives in the same process, so introspection
-and JWKS stay out (DESIGN §19.5).
+are opaque. A co-located resource server verifies them directly; a separated
+resource server uses authenticated RFC 7662 introspection.
 
 Consent and login pages are the app's job (better-auth's shape): the
 authorize endpoint 302s to ``login_url`` / ``consent_url`` and carries the
@@ -29,9 +30,9 @@ import json
 import secrets
 import time
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
-from urllib.parse import unquote, urlencode, urlsplit
+from urllib.parse import unquote_plus, urlencode, urlsplit
 
 from hayate import Headers, Request, Response, problem
 
@@ -59,6 +60,36 @@ LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 AUTH_METHODS = ("none", "client_secret_basic", "client_secret_post")
 GRANT_TYPES = frozenset({"authorization_code", "refresh_token"})
 FORBIDDEN_SCHEMES = frozenset({"javascript", "data", "file", "vbscript"})
+TOKEN_ACTIVE = 0
+TOKEN_ROTATING = 1
+TOKEN_COMPROMISED = 2
+TOKEN_ROTATED = 3
+TOKEN_REVOKED = 4
+
+
+@dataclass(frozen=True)
+class OAuthResourceServer:
+    """Confidential resource-server credentials for RFC 7662 introspection.
+
+    Credentials are deployment configuration, not OAuth client credentials:
+    the resource server may introspect every access token whose RFC 8707
+    resource matches ``resource``. Use an independently generated secret.
+    """
+
+    client_id: str
+    client_secret: str
+    resource: str
+
+    def __post_init__(self) -> None:
+        if not self.client_id:
+            raise ValueError("resource-server client_id must be non-empty")
+        if len(self.client_secret) < 32:
+            raise ValueError("resource-server client_secret must contain at least 32 characters")
+        object.__setattr__(
+            self,
+            "resource",
+            _validate_resource(self.resource, name="resource-server resource"),
+        )
 
 
 @dataclass(frozen=True)
@@ -79,6 +110,7 @@ class AuthorizationServer:
     consent_url: str
     scopes_supported: tuple[str, ...] = ()
     resource: str | None = None
+    resource_servers: tuple[OAuthResourceServer, ...] = ()
     client_id_metadata_documents: ClientIdMetadataDocuments | None = None
     access_token_ttl: timedelta = timedelta(hours=1)
     refresh_token_ttl: timedelta = timedelta(days=30)
@@ -104,29 +136,22 @@ class AuthorizationServer:
             raise ValueError("issuer must use https except on loopback hosts")
         object.__setattr__(self, "issuer", f"{parts.scheme.lower()}://{parts.netloc.lower()}")
         if self.resource is not None:
-            resource = urlsplit(self.resource)
-            try:
-                _resource_port = resource.port
-            except ValueError:
-                raise ValueError("resource contains an invalid port") from None
-            if (
-                resource.scheme not in ("https", "http")
-                or not resource.netloc
-                or resource.fragment
-                or resource.username
-                or resource.password
-            ):
-                raise ValueError("resource must be an absolute HTTP(S) URI without a fragment")
-            if resource.scheme == "http" and resource.hostname not in LOOPBACK_HOSTS:
-                raise ValueError("resource must use https except on loopback hosts")
-            object.__setattr__(self, "resource", _canonical_resource(self.resource))
+            object.__setattr__(self, "resource", _validate_resource(self.resource))
+        resource_server_ids = [server.client_id for server in self.resource_servers]
+        if len(resource_server_ids) != len(set(resource_server_ids)):
+            raise ValueError("resource-server client_id values must be unique")
+        if self.resource is not None and any(
+            not _resource_matches(server.resource, self.resource)
+            for server in self.resource_servers
+        ):
+            raise ValueError("resource-server resource must match the configured resource")
 
 
 # -- small shared pieces ---------------------------------------------------------------
 
 
 def _hash(value: str) -> str:
-    return hashlib.sha256(value.encode("ascii")).hexdigest()
+    return hashlib.sha256(value.encode()).hexdigest()
 
 
 def _s256(verifier: str) -> str:
@@ -135,17 +160,42 @@ def _s256(verifier: str) -> str:
 
 
 def _oauth_error(
-    status: int, error: str, description: str | None = None, *, basic: bool = False
+    status: int,
+    error: str,
+    description: str | None = None,
+    *,
+    basic: bool = False,
+    basic_realm: str = "oauth2/token",
 ) -> Response:
     """An RFC 6749 §5.2 error body (not Problem Details: token/register
     clients parse the standard ``{"error": ...}`` shape)."""
     body: dict[str, Any] = {"error": error}
     if description is not None:
         body["error_description"] = description
-    headers = Headers({"content-type": "application/json", "cache-control": "no-store"})
+    headers = Headers(
+        {
+            "content-type": "application/json",
+            "cache-control": "no-store",
+            "pragma": "no-cache",
+        }
+    )
     if basic:
-        headers.set("www-authenticate", 'Basic realm="oauth2/token"')
+        headers.set("www-authenticate", f'Basic realm="{basic_realm}"')
     return Response(json.dumps(body, separators=(",", ":")), status=status, headers=headers)
+
+
+def _oauth_json_response(data: Any, *, status: int = 200) -> Response:
+    return Response(
+        json.dumps(data, separators=(",", ":")),
+        status=status,
+        headers=Headers(
+            {
+                "content-type": "application/json",
+                "cache-control": "no-store",
+                "pragma": "no-cache",
+            }
+        ),
+    )
 
 
 def _with_params(uri: str, **params: str | None) -> str:
@@ -195,8 +245,30 @@ def _canonical_resource(value: str) -> str:
     ).geturl()
 
 
+def _validate_resource(value: str, *, name: str = "resource") -> str:
+    resource = urlsplit(value)
+    try:
+        _resource_port = resource.port
+    except ValueError:
+        raise ValueError(f"{name} contains an invalid port") from None
+    if (
+        resource.scheme not in ("https", "http")
+        or not resource.netloc
+        or resource.fragment
+        or resource.username
+        or resource.password
+    ):
+        raise ValueError(f"{name} must be an absolute HTTP(S) URI without a fragment")
+    if resource.scheme == "http" and resource.hostname not in LOOPBACK_HOSTS:
+        raise ValueError(f"{name} must use https except on loopback hosts")
+    return _canonical_resource(value)
+
+
 def _resource_matches(presented: str, expected: str) -> bool:
-    return _canonical_resource(presented) == _canonical_resource(expected)
+    try:
+        return _canonical_resource(presented) == _canonical_resource(expected)
+    except ValueError:
+        return False
 
 
 def _acceptable_redirect_uri(uri: str) -> bool:
@@ -264,7 +336,12 @@ def metadata_document(auth: Auth) -> dict[str, Any]:
         "grant_types_supported": sorted(GRANT_TYPES),
         "code_challenge_methods_supported": ["S256"],
         "token_endpoint_auth_methods_supported": list(AUTH_METHODS),
+        "revocation_endpoint": f"{base}/oauth2/revoke",
+        "revocation_endpoint_auth_methods_supported": list(AUTH_METHODS),
     }
+    if config.resource_servers:
+        doc["introspection_endpoint"] = f"{base}/oauth2/introspect"
+        doc["introspection_endpoint_auth_methods_supported"] = ["client_secret_basic"]
     if config.scopes_supported:
         doc["scopes_supported"] = list(config.scopes_supported)
     if config.client_id_metadata_documents is not None:
@@ -352,11 +429,16 @@ async def authorize(auth: Auth, request: Request) -> Response:
     consent_row = await auth.adapter.find_one(
         "oauth_consent", [Where("user_id", user["id"]), Where("client_id", client["client_id"])]
     )
-    if consent_row is not None and set(scope.split()) <= set((consent_row["scope"] or "").split()):
+    if (
+        consent_row is not None
+        and not consent_row["revoked"]
+        and set(scope.split()) <= set((consent_row["scope"] or "").split())
+    ):
         return await _code_redirect(
             auth,
             user_id=user["id"],
             client_id=client["client_id"],
+            grant_id=consent_row["grant_id"],
             redirect_uri=redirect_uri,
             scope=scope,
             state=state,
@@ -407,6 +489,7 @@ async def _code_redirect(
     *,
     user_id: str,
     client_id: str,
+    grant_id: str,
     redirect_uri: str,
     scope: str,
     state: str | None,
@@ -418,6 +501,7 @@ async def _code_redirect(
         auth,
         user_id=user_id,
         client_id=client_id,
+        grant_id=grant_id,
         redirect_uri=redirect_uri,
         scope=scope,
         code_challenge=code_challenge,
@@ -435,6 +519,7 @@ async def _mint_code(
     *,
     user_id: str,
     client_id: str,
+    grant_id: str,
     redirect_uri: str,
     scope: str,
     code_challenge: str,
@@ -451,6 +536,7 @@ async def _mint_code(
             "code_hash": _hash(code),
             "client_id": client_id,
             "user_id": user_id,
+            "grant_id": grant_id,
             "redirect_uri": redirect_uri,
             "scope": scope,
             "code_challenge": code_challenge,
@@ -499,18 +585,34 @@ async def consent(auth: Auth, request: Request) -> Response:
         [Where("user_id", user["id"]), Where("client_id", pending["client_id"])],
     )
     if existing is None:
+        grant_id = new_id()
         await auth.adapter.create(
             "oauth_consent",
             {
                 "id": new_id(),
                 "user_id": user["id"],
                 "client_id": pending["client_id"],
+                "grant_id": grant_id,
                 "scope": scope,
+                "revoked": 0,
                 "created_at": stamp,
                 "updated_at": stamp,
             },
         )
+    elif existing["revoked"]:
+        grant_id = new_id()
+        await auth.adapter.update(
+            "oauth_consent",
+            [Where("id", existing["id"])],
+            {
+                "grant_id": grant_id,
+                "scope": scope,
+                "revoked": 0,
+                "updated_at": stamp,
+            },
+        )
     else:
+        grant_id = existing["grant_id"]
         merged = set((existing["scope"] or "").split()) | set(scope.split())
         await auth.adapter.update(
             "oauth_consent",
@@ -522,6 +624,7 @@ async def consent(auth: Auth, request: Request) -> Response:
         auth,
         user_id=user["id"],
         client_id=pending["client_id"],
+        grant_id=grant_id,
         redirect_uri=pending["redirect_uri"],
         scope=scope,
         code_challenge=pending["code_challenge"],
@@ -577,7 +680,7 @@ async def _authenticate_client(
         if not separator:
             return _oauth_error(401, "invalid_client", basic=True)
         return await _check_client(
-            auth, unquote(encoded_id), unquote(encoded_secret), "client_secret_basic"
+            auth, unquote_plus(encoded_id), unquote_plus(encoded_secret), "client_secret_basic"
         )
     client_id = form.get("client_id")
     if not isinstance(client_id, str) or not client_id:
@@ -633,8 +736,11 @@ async def _token_authorization_code(auth: Auth, form: Any, client: dict[str, Any
                 )
             await auth.adapter.update_many(
                 "oauth_token",
-                [Where("family_id", row["family_id"]), Where("revoked", 0)],
-                {"revoked": 1},
+                [
+                    Where("family_id", row["family_id"]),
+                    Where("revoked", TOKEN_ACTIVE),
+                ],
+                {"revoked": TOKEN_ROTATING},
             )
         return _oauth_error(400, "invalid_grant")
     if row["expires_at"] <= sessions.isoformat(sessions.now()):
@@ -642,9 +748,21 @@ async def _token_authorization_code(auth: Auth, form: Any, client: dict[str, Any
         return _oauth_error(400, "invalid_grant")
     if row["client_id"] != client["client_id"]:
         return _oauth_error(400, "invalid_grant")
+    grant_id = row["grant_id"]
+    if not isinstance(grant_id, str) or not await _grant_active(
+        auth,
+        user_id=row["user_id"],
+        client_id=row["client_id"],
+        grant_id=grant_id,
+    ):
+        return _oauth_error(400, "invalid_grant")
     if row["redirect_uri"] != form.get("redirect_uri"):
         return _oauth_error(400, "invalid_grant")
-    if not hmac.compare_digest(_s256(verifier), row["code_challenge"]):
+    try:
+        verified_challenge = _s256(verifier)
+    except UnicodeEncodeError:
+        return _oauth_error(400, "invalid_grant", "PKCE verification failed")
+    if not hmac.compare_digest(verified_challenge, row["code_challenge"]):
         return _oauth_error(400, "invalid_grant", "PKCE verification failed")
 
     resources = form.get_all("resource")
@@ -675,6 +793,7 @@ async def _token_authorization_code(auth: Auth, form: Any, client: dict[str, Any
         client=client,
         family_id=family,
         user_id=row["user_id"],
+        grant_id=grant_id,
         scope=row["scope"],
         resource=row["resource"],
         authorization_code_id=row["id"],
@@ -699,22 +818,33 @@ async def _token_refresh(auth: Auth, form: Any, client: dict[str, Any]) -> Respo
         # replacement, so a replay cannot slip through the create gap.
         marked = await auth.adapter.update_many(
             "oauth_token",
-            [Where("id", row["id"]), Where("revoked", 1)],
-            {"revoked": 2},
+            [Where("id", row["id"]), Where("revoked", TOKEN_ROTATING)],
+            {"revoked": TOKEN_COMPROMISED},
         )
         if marked == 0:
             await auth.adapter.update_many(
                 "oauth_token",
-                [Where("id", row["id"]), Where("revoked", 3)],
-                {"revoked": 2},
+                [Where("id", row["id"]), Where("revoked", TOKEN_ROTATED)],
+                {"revoked": TOKEN_COMPROMISED},
             )
         await auth.adapter.update_many(
             "oauth_token",
-            [Where("family_id", row["family_id"]), Where("revoked", 0)],
-            {"revoked": 1},
+            [
+                Where("family_id", row["family_id"]),
+                Where("revoked", TOKEN_ACTIVE),
+            ],
+            {"revoked": TOKEN_ROTATING},
         )
         return _oauth_error(400, "invalid_grant")
     if row["client_id"] != client["client_id"]:
+        return _oauth_error(400, "invalid_grant")
+    grant_id = row["grant_id"]
+    if not isinstance(grant_id, str) or not await _grant_active(
+        auth,
+        user_id=row["user_id"],
+        client_id=row["client_id"],
+        grant_id=grant_id,
+    ):
         return _oauth_error(400, "invalid_grant")
     if row["refresh_expires_at"] is not None and row["refresh_expires_at"] <= sessions.isoformat(
         sessions.now()
@@ -742,8 +872,8 @@ async def _token_refresh(auth: Auth, form: Any, client: dict[str, Any]) -> Respo
 
     claimed = await auth.adapter.update_many(
         "oauth_token",
-        [Where("id", row["id"]), Where("revoked", 0)],
-        {"revoked": 1},
+        [Where("id", row["id"]), Where("revoked", TOKEN_ACTIVE)],
+        {"revoked": TOKEN_ROTATING},
     )
     if claimed != 1:
         return _oauth_error(400, "invalid_grant")
@@ -752,6 +882,7 @@ async def _token_refresh(auth: Auth, form: Any, client: dict[str, Any]) -> Respo
         client=client,
         family_id=row["family_id"],
         user_id=row["user_id"],
+        grant_id=grant_id,
         scope=scope,
         resource=row["resource"],
         rotated_token_id=row["id"],
@@ -764,6 +895,7 @@ async def _mint_tokens(
     client: dict[str, Any],
     family_id: str,
     user_id: str,
+    grant_id: str,
     scope: str | None,
     resource: str | None,
     authorization_code_id: str | None = None,
@@ -784,13 +916,14 @@ async def _mint_tokens(
             "family_id": family_id,
             "client_id": client["client_id"],
             "user_id": user_id,
+            "grant_id": grant_id,
             "scope": scope,
             "resource": resource,
             "access_expires_at": sessions.isoformat(stamp + config.access_token_ttl),
             "refresh_expires_at": (
                 sessions.isoformat(stamp + config.refresh_token_ttl) if refresh else None
             ),
-            "revoked": 0,
+            "revoked": TOKEN_ACTIVE,
             "created_at": sessions.isoformat(stamp),
         },
     )
@@ -804,18 +937,27 @@ async def _mint_tokens(
     elif rotated_token_id is not None:
         finalized = await auth.adapter.update_many(
             "oauth_token",
-            [Where("id", rotated_token_id), Where("revoked", 1)],
-            {"revoked": 3},
+            [Where("id", rotated_token_id), Where("revoked", TOKEN_ROTATING)],
+            {"revoked": TOKEN_ROTATED},
         )
-    if finalized != 1 or await _family_compromised(auth, family_id):
+    if (
+        finalized != 1
+        or await _family_invalidated(auth, family_id)
+        or not await _grant_active(
+            auth,
+            user_id=user_id,
+            client_id=client["client_id"],
+            grant_id=grant_id,
+        )
+    ):
         # A replay may have been detected while the token row did not exist.
         # The guarded finalization also prevents a replay that read the
         # in-progress state from acting on stale data without being noticed.
         # Never disclose credentials from a compromised family.
         await auth.adapter.update_many(
             "oauth_token",
-            [Where("family_id", family_id), Where("revoked", 0)],
-            {"revoked": 1},
+            [Where("family_id", family_id), Where("revoked", TOKEN_ACTIVE)],
+            {"revoked": TOKEN_ROTATING},
         )
         return _oauth_error(400, "invalid_grant")
     body: dict[str, Any] = {
@@ -827,12 +969,18 @@ async def _mint_tokens(
         body["scope"] = scope
     if refresh:
         body["refresh_token"] = refresh
-    headers = Headers({"content-type": "application/json", "cache-control": "no-store"})
+    headers = Headers(
+        {
+            "content-type": "application/json",
+            "cache-control": "no-store",
+            "pragma": "no-cache",
+        }
+    )
     return Response(json.dumps(body, separators=(",", ":")), status=200, headers=headers)
 
 
-async def _family_compromised(auth: Auth, family_id: str) -> bool:
-    """Return whether replay detection has permanently burned a token family."""
+async def _family_invalidated(auth: Auth, family_id: str) -> bool:
+    """Return whether replay detection or explicit revocation burned a family."""
     code_replay = await auth.adapter.find_one(
         "oauth_code",
         [Where("family_id", family_id), Where("used", 2)],
@@ -841,9 +989,292 @@ async def _family_compromised(auth: Auth, family_id: str) -> bool:
         return True
     refresh_replay = await auth.adapter.find_one(
         "oauth_token",
-        [Where("family_id", family_id), Where("revoked", 2)],
+        [
+            Where("family_id", family_id),
+            Where("revoked", (TOKEN_COMPROMISED, TOKEN_REVOKED), "in"),
+        ],
     )
     return refresh_replay is not None
+
+
+async def _grant_active(auth: Auth, *, user_id: str, client_id: str, grant_id: str) -> bool:
+    consent = await auth.adapter.find_one(
+        "oauth_consent",
+        [
+            Where("user_id", user_id),
+            Where("client_id", client_id),
+            Where("grant_id", grant_id),
+            Where("revoked", 0),
+        ],
+    )
+    return consent is not None
+
+
+# -- RFC 7009 revocation / RFC 7662 introspection --------------------------------------
+
+
+async def _read_oauth_form(request: Request) -> Any | Response:
+    if (request.headers.get("content-type") or "").partition(";")[0].strip().lower() != (
+        "application/x-www-form-urlencoded"
+    ):
+        return _oauth_error(
+            400, "invalid_request", "body must be application/x-www-form-urlencoded"
+        )
+    try:
+        return await request.form_data()
+    except Exception:
+        return _oauth_error(
+            400, "invalid_request", "body must be application/x-www-form-urlencoded"
+        )
+
+
+async def _find_token_row(
+    auth: Auth, presented: str, hint: Any = None
+) -> tuple[dict[str, Any], str] | None:
+    fields = ["access_token_hash", "refresh_token_hash"]
+    if hint == "refresh_token" or presented.startswith(REFRESH_PREFIX):
+        fields.reverse()
+    digest = _hash(presented)
+    for field in fields:
+        row = await auth.adapter.find_one("oauth_token", [Where(field, digest)])
+        if row is not None:
+            kind = "access_token" if field == "access_token_hash" else "refresh_token"
+            return row, kind
+    return None
+
+
+async def revoke_token(auth: Auth, request: Request) -> Response:
+    """RFC 7009: idempotently invalidate a token and its complete family."""
+    if auth.authorization_server is None:
+        return problem(404, title="Not Found")
+    form = await _read_oauth_form(request)
+    if isinstance(form, Response):
+        return form
+    client = await _authenticate_client(auth, request, form)
+    if isinstance(client, Response):
+        return client
+    presented_values = form.get_all("token")
+    if (
+        len(presented_values) != 1
+        or not isinstance(presented_values[0], str)
+        or not presented_values[0]
+    ):
+        return _oauth_error(400, "invalid_request", "token is required")
+    presented = presented_values[0]
+
+    found = await _find_token_row(auth, presented, form.get("token_type_hint"))
+    if found is not None:
+        row, _kind = found
+        # A valid client can only revoke its own grant. The same 200 response
+        # is returned for unknown and foreign tokens, preventing enumeration.
+        if row["client_id"] == client["client_id"]:
+            await auth.adapter.update_many(
+                "oauth_token",
+                [Where("id", row["id"])],
+                {"revoked": TOKEN_REVOKED},
+            )
+            await auth.adapter.update_many(
+                "oauth_token",
+                [Where("family_id", row["family_id"]), Where("revoked", TOKEN_ACTIVE)],
+                {"revoked": TOKEN_REVOKED},
+            )
+    return Response(
+        None,
+        status=200,
+        headers=Headers({"cache-control": "no-store", "pragma": "no-cache"}),
+    )
+
+
+def _basic_credentials(request: Request, *, realm: str) -> tuple[str, str] | Response:
+    header = request.headers.get("authorization")
+    if header is None or not header.lower().startswith("basic "):
+        return _oauth_error(
+            401,
+            "invalid_client",
+            basic=True,
+            basic_realm=realm,
+        )
+    try:
+        decoded = base64.b64decode(header[6:].strip(), validate=True).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return _oauth_error(
+            401,
+            "invalid_client",
+            basic=True,
+            basic_realm=realm,
+        )
+    encoded_id, separator, encoded_secret = decoded.partition(":")
+    if not separator:
+        return _oauth_error(
+            401,
+            "invalid_client",
+            basic=True,
+            basic_realm=realm,
+        )
+    return unquote_plus(encoded_id), unquote_plus(encoded_secret)
+
+
+def _authenticate_resource_server(
+    config: AuthorizationServer, request: Request
+) -> OAuthResourceServer | Response:
+    credentials = _basic_credentials(request, realm="oauth2/introspect")
+    if isinstance(credentials, Response):
+        return credentials
+    client_id, secret = credentials
+    resource_server = next(
+        (candidate for candidate in config.resource_servers if candidate.client_id == client_id),
+        None,
+    )
+    if resource_server is None or not hmac.compare_digest(
+        _hash(secret), _hash(resource_server.client_secret)
+    ):
+        return _oauth_error(
+            401,
+            "invalid_client",
+            basic=True,
+            basic_realm="oauth2/introspect",
+        )
+    return resource_server
+
+
+async def introspect_token(auth: Auth, request: Request) -> Response:
+    """RFC 7662 for confidential, resource-bound resource servers."""
+    config = auth.authorization_server
+    if config is None or not config.resource_servers:
+        return problem(404, title="Not Found")
+    form = await _read_oauth_form(request)
+    if isinstance(form, Response):
+        return form
+    resource_server = _authenticate_resource_server(config, request)
+    if isinstance(resource_server, Response):
+        return resource_server
+    presented_values = form.get_all("token")
+    if (
+        len(presented_values) != 1
+        or not isinstance(presented_values[0], str)
+        or not presented_values[0]
+    ):
+        return _oauth_error(400, "invalid_request", "token is required")
+    presented = presented_values[0]
+
+    found = await _find_token_row(auth, presented, form.get("token_type_hint"))
+    if found is None:
+        return _oauth_json_response({"active": False})
+    row, kind = found
+    if (
+        row["revoked"] != TOKEN_ACTIVE
+        or row["resource"] is None
+        or not _resource_matches(row["resource"], resource_server.resource)
+    ):
+        return _oauth_json_response({"active": False})
+
+    expires_at = row["access_expires_at"] if kind == "access_token" else row["refresh_expires_at"]
+    if expires_at is None or expires_at <= sessions.isoformat(sessions.now()):
+        return _oauth_json_response({"active": False})
+
+    try:
+        expiration = int(datetime.fromisoformat(expires_at).timestamp())
+        issued = int(datetime.fromisoformat(row["created_at"]).timestamp())
+    except (TypeError, ValueError):
+        return _oauth_json_response({"active": False})
+    body: dict[str, Any] = {
+        "active": True,
+        "client_id": row["client_id"],
+        "sub": row["user_id"],
+        "aud": row["resource"],
+        "iss": config.issuer,
+        "exp": expiration,
+        "iat": issued,
+        "jti": row["id"],
+    }
+    if row["scope"]:
+        body["scope"] = row["scope"]
+    if kind == "access_token":
+        body["token_type"] = "Bearer"
+    return _oauth_json_response(body)
+
+
+# -- End-user consent management -------------------------------------------------------
+
+
+async def list_consents(auth: Auth, request: Request) -> Response:
+    if auth.authorization_server is None:
+        return problem(404, title="Not Found")
+    resolved = await auth.get_session(request)
+    if resolved is None:
+        return problem(401, title="Authentication required")
+    user = resolved[0]
+    rows = await auth.adapter.find_many(
+        "oauth_consent",
+        [Where("user_id", user["id"]), Where("revoked", 0)],
+        sort=("updated_at", "desc"),
+    )
+    public: list[dict[str, Any]] = []
+    for row in rows:
+        client = await auth.adapter.find_one("oauth_client", [Where("client_id", row["client_id"])])
+        public.append(
+            {
+                "client_id": row["client_id"],
+                "client_name": client["name"] if client is not None else None,
+                "scope": row["scope"] or "",
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+        )
+    return _oauth_json_response({"consents": public})
+
+
+async def revoke_consent(auth: Auth, request: Request) -> Response:
+    """Revoke one user's complete grant to a client, including race winners."""
+    if auth.authorization_server is None:
+        return problem(404, title="Not Found")
+    resolved = await auth.get_session(request)
+    if resolved is None:
+        return problem(401, title="Authentication required")
+    user = resolved[0]
+    data = await _read_json_object(request)
+    if isinstance(data, Response):
+        return data
+    client_id = data.get("client_id")
+    if not isinstance(client_id, str) or not client_id:
+        return problem(400, title="client_id is required")
+
+    stamp = sessions.isoformat(sessions.now())
+    consent = await auth.adapter.find_one(
+        "oauth_consent",
+        [Where("user_id", user["id"]), Where("client_id", client_id)],
+    )
+    if consent is not None:
+        # Change grant_id first. Any in-flight mint bound to the prior value
+        # fails its final grant check even if its token row did not exist yet.
+        await auth.adapter.update_many(
+            "oauth_consent",
+            [Where("id", consent["id"])],
+            {"grant_id": new_id(), "revoked": 1, "updated_at": stamp},
+        )
+        await auth.adapter.update_many(
+            "oauth_code",
+            [
+                Where("user_id", user["id"]),
+                Where("client_id", client_id),
+                Where("used", (0, 1, 3), "in"),
+            ],
+            {"used": 2},
+        )
+        await auth.adapter.update_many(
+            "oauth_token",
+            [
+                Where("user_id", user["id"]),
+                Where("client_id", client_id),
+                Where(
+                    "revoked",
+                    (TOKEN_ACTIVE, TOKEN_ROTATING, TOKEN_ROTATED, TOKEN_REVOKED),
+                    "in",
+                ),
+            ],
+            {"revoked": TOKEN_REVOKED},
+        )
+    return _oauth_json_response({"success": True})
 
 
 # -- POST /oauth2/register (RFC 7591) --------------------------------------------------

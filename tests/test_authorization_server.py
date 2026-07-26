@@ -10,7 +10,7 @@ import base64
 import hashlib
 import json
 from datetime import timedelta
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, quote_plus, urlencode, urlsplit
 
 import pytest
 from hayate import Request, Response
@@ -20,6 +20,7 @@ from hayate_auth import (
     Auth,
     AuthorizationServer,
     ClientIdMetadataDocuments,
+    OAuthResourceServer,
     ScryptBackend,
     Where,
 )
@@ -170,6 +171,17 @@ async def test_well_known_metadata(auth_as):
     assert doc["authorization_endpoint"] == f"http://localhost{BASE}/oauth2/authorize"
     assert doc["token_endpoint"] == f"http://localhost{BASE}/oauth2/token"
     assert doc["registration_endpoint"] == f"http://localhost{BASE}/oauth2/register"
+    assert doc["revocation_endpoint"] == f"http://localhost{BASE}/oauth2/revoke"
+    assert doc["revocation_endpoint_auth_methods_supported"] == [
+        "none",
+        "client_secret_basic",
+        "client_secret_post",
+    ]
+    assert "introspection_endpoint" not in doc
+    introspection = await auth_as.fetch(
+        request_form(f"{BASE}/oauth2/introspect", {"token": "unknown"})
+    )
+    assert introspection.status == 404
     assert doc["code_challenge_methods_supported"] == ["S256"]
     assert doc["response_types_supported"] == ["code"]
 
@@ -378,6 +390,28 @@ def test_issuer_must_be_an_origin():
             consent_url="/c",
             resource="https://user@mcp.example.com/mcp",
         )
+    with pytest.raises(ValueError):
+        OAuthResourceServer("resource-server", "short", "https://mcp.example/mcp")
+    resource_server = OAuthResourceServer(
+        "resource-server",
+        "s" * 32,
+        "https://mcp.example/mcp",
+    )
+    with pytest.raises(ValueError):
+        AuthorizationServer(
+            issuer="https://auth.example.com",
+            login_url="/l",
+            consent_url="/c",
+            resource_servers=(resource_server, resource_server),
+        )
+    with pytest.raises(ValueError):
+        AuthorizationServer(
+            issuer="https://auth.example.com",
+            login_url="/l",
+            consent_url="/c",
+            resource="https://mcp.example/a",
+            resource_servers=(resource_server,),
+        )
 
 
 # -- RFC 7591 dynamic client registration ------------------------------------------------
@@ -584,6 +618,16 @@ async def test_mcp_mode_requires_its_resource_on_authorize(adapter):
         )
     )
     assert location_params(wrong.headers.get("location"))["error"] == "invalid_target"
+
+    malformed = await auth.fetch(
+        authorize_request(
+            client,
+            verifier="v" * 43,
+            cookie=cookie,
+            resource="https://[invalid/mcp",
+        )
+    )
+    assert location_params(malformed.headers.get("location"))["error"] == "invalid_target"
 
 
 async def test_authorize_rejects_unknown_scope_when_configured(adapter):
@@ -1149,3 +1193,344 @@ async def test_unsupported_grant_type(auth_as):
     )
     assert res.status == 400
     assert (await res.json())["error"] == "unsupported_grant_type"
+
+
+# -- RFC 7009 revocation ---------------------------------------------------------------
+
+
+def basic_auth(client_id: str, client_secret: str) -> dict[str, str]:
+    encoded = base64.b64encode(
+        f"{quote_plus(client_id, safe='')}:{quote_plus(client_secret, safe='')}".encode()
+    ).decode()
+    return {"authorization": f"Basic {encoded}"}
+
+
+async def test_revocation_is_idempotent_private_and_family_wide(auth_as):
+    tokens, client, _cookie = await full_grant(auth_as)
+    other = await register(auth_as, client_name="Other")
+
+    foreign = await auth_as.fetch(
+        request_form(
+            f"{BASE}/oauth2/revoke",
+            {"token": tokens["access_token"], "client_id": other["client_id"]},
+        )
+    )
+    assert foreign.status == 200
+    assert await auth_as.verify_oauth_token(tokens["access_token"]) is not None
+
+    revoked = await auth_as.fetch(
+        request_form(
+            f"{BASE}/oauth2/revoke",
+            {
+                "token": tokens["access_token"],
+                "token_type_hint": "refresh_token",
+                "client_id": client["client_id"],
+            },
+        )
+    )
+    assert revoked.status == 200
+    assert await revoked.text() == ""
+    assert revoked.headers.get("cache-control") == "no-store"
+    assert revoked.headers.get("pragma") == "no-cache"
+    assert await auth_as.verify_oauth_token(tokens["access_token"]) is None
+
+    refresh = await auth_as.fetch(
+        request_form(
+            f"{BASE}/oauth2/token",
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": tokens["refresh_token"],
+                "client_id": client["client_id"],
+            },
+        )
+    )
+    assert refresh.status == 400
+
+    unknown = await auth_as.fetch(
+        request_form(
+            f"{BASE}/oauth2/revoke",
+            {"token": "unknown", "client_id": client["client_id"]},
+        )
+    )
+    assert unknown.status == 200
+    assert await unknown.text() == ""
+
+
+async def test_confidential_client_revokes_with_http_basic(auth_as):
+    cookie = await signed_in_cookie(auth_as)
+    client = await register(
+        auth_as,
+        token_endpoint_auth_method="client_secret_basic",
+    )
+    verifier = "confidential-code-verifier-string-long-enough"
+    code = await obtain_code(auth_as, cookie, client, verifier=verifier)
+    headers = basic_auth(client["client_id"], client["client_secret"])
+    exchanged = await exchange(
+        auth_as,
+        client,
+        code,
+        verifier=verifier,
+        headers=headers,
+    )
+    tokens = await exchanged.json()
+
+    invalid = await auth_as.fetch(
+        request_form(
+            f"{BASE}/oauth2/revoke",
+            {"token": tokens["access_token"]},
+            headers=basic_auth(client["client_id"], "wrong"),
+        )
+    )
+    assert invalid.status == 401
+    assert await auth_as.verify_oauth_token(tokens["access_token"]) is not None
+
+    revoked = await auth_as.fetch(
+        request_form(
+            f"{BASE}/oauth2/revoke",
+            {"token": tokens["refresh_token"]},
+            headers=headers,
+        )
+    )
+    assert revoked.status == 200
+    assert await auth_as.verify_oauth_token(tokens["access_token"]) is None
+
+
+async def test_revocation_racing_refresh_never_discloses_a_live_replacement(adapter, monkeypatch):
+    auth = make_auth(adapter)
+    tokens, client, _cookie = await full_grant(auth)
+    create_started = asyncio.Event()
+    resume_create = asyncio.Event()
+    original_create = adapter.create
+
+    async def paused_create(model, data):
+        if model == "oauth_token":
+            create_started.set()
+            await resume_create.wait()
+        return await original_create(model, data)
+
+    monkeypatch.setattr(adapter, "create", paused_create)
+    rotating = asyncio.create_task(
+        auth.fetch(
+            request_form(
+                f"{BASE}/oauth2/token",
+                {
+                    "grant_type": "refresh_token",
+                    "refresh_token": tokens["refresh_token"],
+                    "client_id": client["client_id"],
+                },
+            )
+        )
+    )
+    await create_started.wait()
+    revoked = await auth.fetch(
+        request_form(
+            f"{BASE}/oauth2/revoke",
+            {"token": tokens["refresh_token"], "client_id": client["client_id"]},
+        )
+    )
+    assert revoked.status == 200
+    resume_create.set()
+    response = await rotating
+    assert response.status == 400
+    rows = await adapter.find_many("oauth_token", [])
+    assert rows
+    assert not any(row["revoked"] == 0 for row in rows)
+
+
+# -- RFC 7662 introspection ------------------------------------------------------------
+
+
+async def test_introspection_is_resource_bound_authenticated_and_private(adapter):
+    resource = "https://mcp.example/mcp"
+    resource_server_id = "mcp resource/server"
+    resource_server_secret = "r +:/?" * 7
+    auth = make_auth(
+        adapter,
+        resource=resource,
+        scopes_supported=("mcp",),
+        resource_servers=(
+            OAuthResourceServer(
+                client_id=resource_server_id,
+                client_secret=resource_server_secret,
+                resource=resource,
+            ),
+        ),
+    )
+    metadata = await auth.fetch(Request("http://localhost/.well-known/oauth-authorization-server"))
+    document = await metadata.json()
+    assert document["introspection_endpoint"] == f"http://localhost{BASE}/oauth2/introspect"
+    assert document["introspection_endpoint_auth_methods_supported"] == ["client_secret_basic"]
+
+    tokens, client, _cookie = await full_grant(auth, scope="mcp", resource=resource)
+    headers = basic_auth(resource_server_id, resource_server_secret)
+    active = await auth.fetch(
+        request_form(
+            f"{BASE}/oauth2/introspect",
+            {"token": tokens["access_token"], "token_type_hint": "refresh_token"},
+            headers=headers,
+        )
+    )
+    assert active.status == 200
+    assert active.headers.get("cache-control") == "no-store"
+    assert active.headers.get("pragma") == "no-cache"
+    claims = await active.json()
+    assert claims["active"] is True
+    assert claims["client_id"] == client["client_id"]
+    assert claims["scope"] == "mcp"
+    assert claims["aud"] == resource
+    assert claims["iss"] == "http://localhost"
+    assert claims["token_type"] == "Bearer"
+    assert isinstance(claims["exp"], int)
+    assert isinstance(claims["iat"], int)
+
+    unknown = await auth.fetch(
+        request_form(
+            f"{BASE}/oauth2/introspect",
+            {"token": "not-issued"},
+            headers=headers,
+        )
+    )
+    assert await unknown.json() == {"active": False}
+
+    unauthorized = await auth.fetch(
+        request_form(
+            f"{BASE}/oauth2/introspect",
+            {"token": tokens["access_token"]},
+            headers=basic_auth(resource_server_id, "wrong"),
+        )
+    )
+    assert unauthorized.status == 401
+    assert unauthorized.headers.get("www-authenticate") == 'Basic realm="oauth2/introspect"'
+
+    duplicated = await auth.fetch(
+        Request(
+            f"http://localhost{BASE}/oauth2/introspect",
+            method="POST",
+            headers={
+                "content-type": "application/x-www-form-urlencoded",
+                **headers,
+            },
+            body=f"token={tokens['access_token']}&token=other",
+        )
+    )
+    assert duplicated.status == 400
+    assert (await duplicated.json())["error"] == "invalid_request"
+
+
+async def test_introspection_hides_tokens_from_another_resource(adapter):
+    issued_resource = "https://mcp.example/a"
+    other_resource = "https://mcp.example/b"
+    auth = make_auth(
+        adapter,
+        resource_servers=(
+            OAuthResourceServer("resource-a", "a" * 32, issued_resource),
+            OAuthResourceServer("resource-b", "b" * 32, other_resource),
+        ),
+    )
+    tokens, _client, _cookie = await full_grant(auth, resource=issued_resource)
+    response = await auth.fetch(
+        request_form(
+            f"{BASE}/oauth2/introspect",
+            {"token": tokens["access_token"]},
+            headers=basic_auth("resource-b", "b" * 32),
+        )
+    )
+    assert await response.json() == {"active": False}
+
+
+# -- End-user consent management -------------------------------------------------------
+
+
+async def test_user_can_list_and_revoke_a_consent(auth_as):
+    tokens, client, cookie = await full_grant(auth_as, scope="mcp profile")
+    listed = await auth_as.fetch(
+        Request(
+            f"http://localhost{BASE}/oauth2/consents",
+            headers={"cookie": cookie},
+        )
+    )
+    assert listed.status == 200
+    assert listed.headers.get("cache-control") == "no-store"
+    consent = (await listed.json())["consents"]
+    assert len(consent) == 1
+    assert consent[0]["client_id"] == client["client_id"]
+    assert consent[0]["client_name"] == "Test Client"
+    assert consent[0]["scope"] == "mcp profile"
+    assert consent[0]["created_at"]
+    assert consent[0]["updated_at"]
+
+    revoked = await auth_as.fetch(
+        request_json(
+            f"{BASE}/oauth2/consents/revoke",
+            {"client_id": client["client_id"]},
+            cookie=cookie,
+        )
+    )
+    assert revoked.status == 200
+    assert await revoked.json() == {"success": True}
+    assert await auth_as.verify_oauth_token(tokens["access_token"]) is None
+    after = await auth_as.fetch(
+        Request(
+            f"http://localhost{BASE}/oauth2/consents",
+            headers={"cookie": cookie},
+        )
+    )
+    assert await after.json() == {"consents": []}
+
+    verifier = "authorize-again-after-revocation-verifier"
+    authorize_again = await auth_as.fetch(
+        authorize_request(client, verifier=verifier, cookie=cookie, scope="mcp")
+    )
+    assert authorize_again.status == 302
+    assert "/consent?" in authorize_again.headers.get("location")
+
+
+async def test_another_user_cannot_revoke_someone_elses_consent(auth_as):
+    tokens, client, _owner_cookie = await full_grant(auth_as)
+    other_cookie = await signed_in_cookie(auth_as, "other@example.com")
+    response = await auth_as.fetch(
+        request_json(
+            f"{BASE}/oauth2/consents/revoke",
+            {"client_id": client["client_id"]},
+            cookie=other_cookie,
+        )
+    )
+    assert response.status == 200
+    assert await auth_as.verify_oauth_token(tokens["access_token"]) is not None
+
+
+async def test_consent_revocation_racing_code_exchange_cannot_leave_a_live_token(
+    adapter, monkeypatch
+):
+    auth = make_auth(adapter)
+    cookie = await signed_in_cookie(auth)
+    client = await register(auth)
+    verifier = "consent-race-code-verifier-long-enough"
+    code = await obtain_code(auth, cookie, client, verifier=verifier)
+    create_started = asyncio.Event()
+    resume_create = asyncio.Event()
+    original_create = adapter.create
+
+    async def paused_create(model, data):
+        if model == "oauth_token":
+            create_started.set()
+            await resume_create.wait()
+        return await original_create(model, data)
+
+    monkeypatch.setattr(adapter, "create", paused_create)
+    exchanging = asyncio.create_task(exchange(auth, client, code, verifier=verifier))
+    await create_started.wait()
+    revoked = await auth.fetch(
+        request_json(
+            f"{BASE}/oauth2/consents/revoke",
+            {"client_id": client["client_id"]},
+            cookie=cookie,
+        )
+    )
+    assert revoked.status == 200
+    resume_create.set()
+    response = await exchanging
+    assert response.status == 400
+    rows = await adapter.find_many("oauth_token", [])
+    assert rows
+    assert not any(row["revoked"] == 0 for row in rows)

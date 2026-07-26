@@ -33,7 +33,11 @@ def endpoint():
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app:app", "--port", str(PORT)],
         cwd=ROOT,
-        env={**os.environ, "AUTH_DB": ":memory:"},
+        env={
+            **os.environ,
+            "AUTH_DB": ":memory:",
+            "VERIFY_MODE": "introspection",
+        },
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -125,6 +129,7 @@ async def test_official_client_full_oauth_round_trip(endpoint):
             query = parse_qs(urlsplit(captured["redirect"]).query)
             return query["code"][0], query.get("state", [None])[0]
 
+        storage = MemoryTokenStorage()
         oauth = OAuthClientProvider(
             server_url=endpoint,
             client_metadata=OAuthClientMetadata(
@@ -135,7 +140,7 @@ async def test_official_client_full_oauth_round_trip(endpoint):
                 token_endpoint_auth_method="none",
                 scope="mcp",
             ),
-            storage=MemoryTokenStorage(),
+            storage=storage,
             redirect_handler=redirect_handler,
             callback_handler=callback_handler,
         )
@@ -157,3 +162,34 @@ async def test_official_client_full_oauth_round_trip(endpoint):
 
             outcome = await session.call_tool("echo", {"text": "with oauth"})
             assert outcome.content[0].text == "echo: with oauth"
+
+        assert storage.tokens is not None
+        introspected = await browser.post(
+            "/api/auth/oauth2/introspect",
+            data={
+                "token": storage.tokens.access_token,
+                "token_type_hint": "access_token",
+            },
+            auth=("mcp-resource-server", "dev-introspection-secret-change-me"),
+        )
+        assert introspected.status_code == 200
+        claims = introspected.json()
+        assert claims["active"] is True
+        assert claims["aud"] == endpoint
+        assert claims["scope"] == "mcp"
+
+        consents = await browser.get("/api/auth/oauth2/consents")
+        assert consents.status_code == 200
+        client_id = consents.json()["consents"][0]["client_id"]
+        revoked = await browser.post(
+            "/api/auth/oauth2/consents/revoke",
+            json={"client_id": client_id},
+        )
+        assert revoked.status_code == 200
+
+        inactive = await browser.post(
+            "/api/auth/oauth2/introspect",
+            data={"token": storage.tokens.access_token},
+            auth=("mcp-resource-server", "dev-introspection-secret-change-me"),
+        )
+        assert inactive.json() == {"active": False}

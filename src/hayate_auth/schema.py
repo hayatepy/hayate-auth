@@ -70,6 +70,7 @@ MODELS: dict[str, tuple[str, ...]] = {
         "code_hash",
         "client_id",
         "user_id",
+        "grant_id",
         "redirect_uri",
         "scope",
         "code_challenge",
@@ -87,6 +88,7 @@ MODELS: dict[str, tuple[str, ...]] = {
         "family_id",
         "client_id",
         "user_id",
+        "grant_id",
         "scope",
         "resource",
         "access_expires_at",
@@ -98,7 +100,9 @@ MODELS: dict[str, tuple[str, ...]] = {
         "id",
         "user_id",
         "client_id",
+        "grant_id",
         "scope",
+        "revoked",
         "created_at",
         "updated_at",
     ),
@@ -197,6 +201,7 @@ CREATE TABLE IF NOT EXISTS "oauth_code" (
   code_hash TEXT NOT NULL UNIQUE,
   client_id TEXT NOT NULL,
   user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  grant_id TEXT NOT NULL,
   redirect_uri TEXT NOT NULL,
   scope TEXT,
   code_challenge TEXT NOT NULL,
@@ -207,6 +212,7 @@ CREATE TABLE IF NOT EXISTS "oauth_code" (
   expires_at TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS oauth_code_user_client ON "oauth_code"(user_id, client_id);
 CREATE TABLE IF NOT EXISTS "oauth_token" (
   id TEXT PRIMARY KEY,
   access_token_hash TEXT NOT NULL UNIQUE,
@@ -214,6 +220,7 @@ CREATE TABLE IF NOT EXISTS "oauth_token" (
   family_id TEXT NOT NULL,
   client_id TEXT NOT NULL,
   user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  grant_id TEXT NOT NULL,
   scope TEXT,
   resource TEXT,
   access_expires_at TEXT NOT NULL,
@@ -222,11 +229,14 @@ CREATE TABLE IF NOT EXISTS "oauth_token" (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS oauth_token_family_id ON "oauth_token"(family_id);
+CREATE INDEX IF NOT EXISTS oauth_token_user_client ON "oauth_token"(user_id, client_id);
 CREATE TABLE IF NOT EXISTS "oauth_consent" (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
   client_id TEXT NOT NULL,
+  grant_id TEXT NOT NULL,
   scope TEXT,
+  revoked INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (user_id, client_id)
@@ -258,10 +268,39 @@ ALTER TABLE "two_factor"
   ADD COLUMN last_used_step INTEGER NOT NULL DEFAULT 0;
 """
 
+OAUTH_GRANT_REVOCATION_MIGRATION = """\
+ALTER TABLE "oauth_consent"
+  ADD COLUMN grant_id TEXT;
+ALTER TABLE "oauth_consent"
+  ADD COLUMN revoked INTEGER NOT NULL DEFAULT 0;
+UPDATE "oauth_consent"
+  SET grant_id = id;
+ALTER TABLE "oauth_code"
+  ADD COLUMN grant_id TEXT;
+UPDATE "oauth_code"
+  SET grant_id = (
+    SELECT grant_id FROM "oauth_consent"
+    WHERE "oauth_consent".user_id = "oauth_code".user_id
+      AND "oauth_consent".client_id = "oauth_code".client_id
+  );
+ALTER TABLE "oauth_token"
+  ADD COLUMN grant_id TEXT;
+UPDATE "oauth_token"
+  SET grant_id = (
+    SELECT grant_id FROM "oauth_consent"
+    WHERE "oauth_consent".user_id = "oauth_token".user_id
+      AND "oauth_consent".client_id = "oauth_token".client_id
+  );
+CREATE INDEX IF NOT EXISTS oauth_code_user_client
+  ON "oauth_code"(user_id, client_id);
+CREATE INDEX IF NOT EXISTS oauth_token_user_client
+  ON "oauth_token"(user_id, client_id);
+"""
+
 MIGRATIONS = {
     "0.9.1": {
-        "sqlite": TOTP_SINGLE_USE_MIGRATION,
-        "postgres": TOTP_SINGLE_USE_MIGRATION,
-        "d1": TOTP_SINGLE_USE_MIGRATION,
+        "sqlite": TOTP_SINGLE_USE_MIGRATION + OAUTH_GRANT_REVOCATION_MIGRATION,
+        "postgres": TOTP_SINGLE_USE_MIGRATION + OAUTH_GRANT_REVOCATION_MIGRATION,
+        "d1": TOTP_SINGLE_USE_MIGRATION + OAUTH_GRANT_REVOCATION_MIGRATION,
     }
 }

@@ -3,7 +3,7 @@
 from . import totp
 from .adapter import Adapter, Where
 from .auth import Auth
-from .authorization_server import AuthorizationServer
+from .authorization_server import AuthorizationServer, OAuthResourceServer
 from .cimd import ClientIdMetadataDocuments
 from .crypto import (
     CryptoBackend,
@@ -12,6 +12,7 @@ from .crypto import (
     UnsupportedHashError,
     default_backend,
 )
+from .introspection import OAuthIntrospectionVerifier
 from .lazy import LazyAuth
 from .oauth import OAuthProvider, github, google
 from .passkey import PasskeyConfig
@@ -28,7 +29,9 @@ __all__ = [
     "ClientIdMetadataDocuments",
     "CryptoBackend",
     "LazyAuth",
+    "OAuthIntrospectionVerifier",
     "OAuthProvider",
+    "OAuthResourceServer",
     "PasskeyConfig",
     "Pbkdf2Backend",
     "Principal",

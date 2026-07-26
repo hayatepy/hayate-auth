@@ -4,12 +4,25 @@ All notable changes to hayate-auth are documented here.
 
 ## Unreleased
 
+### Added
+
+- Add RFC 7009 token revocation, RFC 7662 confidential resource-server
+  introspection, RFC 8414 discovery metadata, and a fail-closed
+  `OAuthIntrospectionVerifier` for
+  [separated MCP resource servers](docs/oauth-revocation-introspection.md).
+- Add authenticated end-user consent listing and revocation APIs.
+
 ### Security
 
 - Reject reuse of an accepted TOTP time step, including concurrent redemption
   and older adjacent-window codes, with a guarded atomic adapter transition.
+- Bind authorization codes and tokens to a versioned consent grant so consent
+  revocation wins against concurrent code exchange and refresh rotation.
+- Revoke complete token families without disclosing whether an unknown or
+  foreign token exists; restrict introspection results to the authenticated
+  resource server's exact RFC 8707 resource.
 - Add explicit SQLite/PostgreSQL/D1 migration DDL for the persisted
-  `last_used_step` replay boundary.
+  `last_used_step` replay boundary and versioned OAuth consent grants.
 
 ## [0.9.1] - 2026-07-26
 

@@ -1,13 +1,18 @@
 """D1Adapter against an in-process fake of the D1 prepare/bind/all API,
 backed by a real sqlite3 database — the SQL itself is exercised for real."""
 
+import asyncio
+import base64
+import hashlib
 import sqlite3
 import time
+from urllib.parse import urlencode
 
 import pytest
+from hayate import Request
 
 from conftest import cookie_pair, request_json
-from hayate_auth import Auth, ScryptBackend, totp
+from hayate_auth import Auth, AuthorizationServer, ScryptBackend, totp
 from hayate_auth.adapter import Where
 from hayate_auth.adapters.d1 import D1Adapter
 from hayate_auth.schema import SQLITE_SCHEMA
@@ -142,3 +147,119 @@ async def test_d1_totp_step_redemption_is_atomic_and_single_use(adapter):
     )
     assert first.status == 200
     assert replay.status == 401
+
+
+async def test_d1_consent_revocation_wins_against_in_flight_token_mint(adapter, monkeypatch):
+    auth = Auth(
+        secret="test-secret",
+        adapter=adapter,
+        crypto=ScryptBackend(log_n=12),
+        authorization_server=AuthorizationServer(
+            issuer="http://localhost",
+            login_url="/login",
+            consent_url="/consent",
+        ),
+    )
+    signup = await auth.fetch(
+        request_json(
+            "/api/auth/sign-up/email",
+            {"email": "d1-oauth@example.com", "password": "long enough"},
+        )
+    )
+    user_id = (await signup.json())["user"]["id"]
+    session_cookie = cookie_pair(signup)
+    registered = await auth.fetch(
+        request_json(
+            "/api/auth/oauth2/register",
+            {
+                "redirect_uris": ["https://client.example/cb"],
+                "token_endpoint_auth_method": "none",
+                "grant_types": ["authorization_code", "refresh_token"],
+            },
+        )
+    )
+    client = await registered.json()
+    stamp = "2026-07-27T00:00:00+00:00"
+    grant_id = "grant-1"
+    await adapter.create(
+        "oauth_consent",
+        {
+            "id": "consent-1",
+            "user_id": user_id,
+            "client_id": client["client_id"],
+            "grant_id": grant_id,
+            "scope": "mcp",
+            "revoked": 0,
+            "created_at": stamp,
+            "updated_at": stamp,
+        },
+    )
+    code = "authorization-code"
+    verifier = "v" * 43
+    challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+    )
+    await adapter.create(
+        "oauth_code",
+        {
+            "id": "code-1",
+            "code_hash": hashlib.sha256(code.encode()).hexdigest(),
+            "client_id": client["client_id"],
+            "user_id": user_id,
+            "grant_id": grant_id,
+            "redirect_uri": client["redirect_uris"][0],
+            "scope": "mcp",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+            "resource": None,
+            "used": 0,
+            "family_id": None,
+            "expires_at": "2099-01-01T00:00:00+00:00",
+            "created_at": stamp,
+        },
+    )
+
+    create_started = asyncio.Event()
+    resume_create = asyncio.Event()
+    original_create = adapter.create
+
+    async def paused_create(model, data):
+        if model == "oauth_token":
+            create_started.set()
+            await resume_create.wait()
+        return await original_create(model, data)
+
+    monkeypatch.setattr(adapter, "create", paused_create)
+    exchange = asyncio.create_task(
+        auth.fetch(
+            Request(
+                "http://localhost/api/auth/oauth2/token",
+                method="POST",
+                headers={"content-type": "application/x-www-form-urlencoded"},
+                body=urlencode(
+                    {
+                        "grant_type": "authorization_code",
+                        "code": code,
+                        "code_verifier": verifier,
+                        "redirect_uri": client["redirect_uris"][0],
+                        "client_id": client["client_id"],
+                    }
+                ),
+            )
+        )
+    )
+    await create_started.wait()
+    revoked = await auth.fetch(
+        request_json(
+            "/api/auth/oauth2/consents/revoke",
+            {"client_id": client["client_id"]},
+            cookie=session_cookie,
+        )
+    )
+    assert revoked.status == 200
+    resume_create.set()
+    response = await exchange
+    assert response.status == 400
+    rows = await adapter.find_many("oauth_token", [])
+    assert len(rows) == 1
+    assert rows[0]["revoked"] != 0
