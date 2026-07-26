@@ -56,6 +56,20 @@ async def _new_password_problem(auth: Auth, password: object) -> Response | None
     return problem(400, title=error) if error is not None else None
 
 
+async def _fresh_session(
+    auth: Auth,
+    request: Request,
+) -> tuple[dict[str, Any], dict[str, Any]] | Response:
+    resolved = await auth.get_session(request)
+    if resolved is None:
+        return problem(401, title="Authentication required")
+    if auth.session_fresh_ttl is not None and resolved[1]["created_at"] <= sessions.isoformat(
+        sessions.now() - auth.session_fresh_ttl
+    ):
+        return problem(403, title="Session is not fresh; sign in again")
+    return resolved
+
+
 async def _issue_session(auth: Auth, request: Request, user_row: dict[str, Any]) -> Response:
     token, _ = await sessions.create_session(
         auth.adapter,
@@ -263,11 +277,69 @@ async def change_password(auth: Auth, request: Request) -> Response:
         return problem(409, title="Password could not be changed")
 
     if revoke_others:
-        active = await auth.adapter.find_many("session", [Where("user_id", user["id"])])
-        for row in active:
-            if row["id"] != current_session["id"]:
-                await auth.adapter.delete("session", [Where("id", row["id"])])
+        await auth.revoke_user_sessions(
+            user["id"],
+            except_session_id=current_session["id"],
+        )
     return _json_response({"success": True, "user": user})
+
+
+async def list_sessions(auth: Auth, request: Request) -> Response:
+    resolved = await _fresh_session(auth, request)
+    if isinstance(resolved, Response):
+        return resolved
+    user, current_session = resolved
+    active = await auth.list_user_sessions(user["id"])
+    return _json_response(
+        [
+            {
+                **record,
+                "current": record["id"] == current_session["id"],
+            }
+            for record in active
+        ]
+    )
+
+
+async def revoke_session_by_id(auth: Auth, request: Request) -> Response:
+    resolved = await _fresh_session(auth, request)
+    if isinstance(resolved, Response):
+        return resolved
+    user, current_session = resolved
+    data = await _read_json_object(request)
+    if isinstance(data, Response):
+        return data
+    session_id = data.get("sessionId")
+    if not isinstance(session_id, str) or not session_id:
+        return problem(400, title="sessionId is required")
+
+    await auth.revoke_user_session(user["id"], session_id)
+    cookies = None
+    if session_id == current_session["id"]:
+        cookies = [sessions.clear_cookie(secure=sessions.is_secure_request(request))]
+    return _json_response({"success": True}, cookies=cookies)
+
+
+async def revoke_other_sessions(auth: Auth, request: Request) -> Response:
+    resolved = await _fresh_session(auth, request)
+    if isinstance(resolved, Response):
+        return resolved
+    user, current_session = resolved
+    await auth.revoke_user_sessions(
+        user["id"],
+        except_session_id=current_session["id"],
+    )
+    return _json_response({"success": True})
+
+
+async def revoke_all_sessions(auth: Auth, request: Request) -> Response:
+    resolved = await _fresh_session(auth, request)
+    if isinstance(resolved, Response):
+        return resolved
+    user, _ = resolved
+    await auth.revoke_user_sessions(user["id"])
+    cookie = sessions.clear_cookie(secure=sessions.is_secure_request(request))
+    return _json_response({"success": True}, cookies=[cookie])
 
 
 async def verify_email(auth: Auth, request: Request) -> Response:
@@ -318,6 +390,10 @@ ROUTES = {
     ("POST", "/forget-password"): forget_password,
     ("POST", "/reset-password"): reset_password,
     ("POST", "/change-password"): change_password,
+    ("GET", "/list-sessions"): list_sessions,
+    ("POST", "/revoke-session"): revoke_session_by_id,
+    ("POST", "/revoke-other-sessions"): revoke_other_sessions,
+    ("POST", "/revoke-sessions"): revoke_all_sessions,
     ("GET", "/verify-email"): verify_email,
     ("POST", "/sign-in/social"): _lazy("oauth", "sign_in_social"),
     ("POST", "/sign-in/two-factor"): _lazy("two_factor", "sign_in"),

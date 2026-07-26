@@ -150,7 +150,7 @@ better-auth と同型の 4 モデル。email/password も「credential プロバ
 | モデル | 主なフィールド |
 |---|---|
 | `user` | id, email(unique), email_verified, name?, image?, created_at, updated_at |
-| `session` | id, token_hash(unique), user_id, expires_at, ip_address?, user_agent?, created_at |
+| `session` | id, token_hash(unique), user_id, expires_at, ip_address?, user_agent?, last_active_at, created_at |
 | `account` | id, user_id, provider_id("credential" / "google" / …), account_id, password_hash?, access_token?, refresh_token?, expires_at?, created_at, updated_at |
 | `verification` | id, identifier, value_hash, expires_at, created_at |
 
@@ -212,6 +212,7 @@ class Adapter(Protocol):
 | POST `/sign-in/email` | ログイン(セッション発行) | v0.1 |
 | POST `/sign-out` | セッション失効 | v0.1 |
 | GET `/get-session` | 現在のセッション + user | v0.1 |
+| GET `/list-sessions`・POST `/revoke-session` / `/revoke-other-sessions` / `/revoke-sessions` | fresh session による自己session管理 | v0.10 |
 | POST `/forget-password` / `/reset-password` | リセットフロー | v0.2 |
 | POST `/change-password` | 現在のパスワード再検証 + 任意の他セッション失効 | v0.10 |
 | GET `/verify-email` | メール検証 | v0.2 |
@@ -231,6 +232,9 @@ Python 側 API(表記は PEP 8):
 - `auth.require_session()` — ミドルウェア(未認証は 401 Problem Details)。
   認証済みなら `c.set("user", …)` / `c.set("session", …)`
 - `auth.get_session(request)` — ミドルウェア外での手動検証
+- `auth.list_user_sessions(user_id)` / `auth.revoke_user_session(user_id, session_id)` /
+  `auth.revoke_user_sessions(user_id, except_session_id=...)` — 管理者向けprimitive。
+  認可は呼び出し側が担い、token material は返さない
 
 ---
 
