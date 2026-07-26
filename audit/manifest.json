@@ -17,8 +17,8 @@
       "sha256": "25cc49742d7b62981739e6cc614288298aad0f11100aa73eb21fb5cb8897eed0"
     },
     "audit/README.md": {
-      "bytes": 2178,
-      "sha256": "c677562d03b05e6076c0f2e3f77f0ef21804ce6a2fa0a198327d179645366551"
+      "bytes": 2236,
+      "sha256": "2b93ab7e4f495f849f6890017cf28b018201b607f0b6e937f1f8d411b404bfb0"
     },
     "audit/RFP.md": {
       "bytes": 3098,
@@ -33,16 +33,16 @@
       "sha256": "23125e12a3a1d08a8e32fc88957def17cb6474a88fd6e29da6ba52c679d14884"
     },
     "audit/target.toml": {
-      "bytes": 3352,
-      "sha256": "ae0821d0732e3f3841aa9007fe4b7fc40864f5ab0c169ddcc8963f425bd1d80d"
+      "bytes": 3299,
+      "sha256": "4b36067b9ffeedc9121202cf9e1b4dd48754c2b68f3445894b9b22c2f04f2971"
     },
     "docs/asvs.md": {
       "bytes": 10066,
       "sha256": "a0157cc1c09813c48b3d9487ca629053879f1c8f3a7cada334f6d69389b8e442"
     },
     "scripts/check_audit_pack.py": {
-      "bytes": 7548,
-      "sha256": "c6830e529bdff5bb23d7bda3f54fa13c13a329234d48882f06ea593ea0510cc4"
+      "bytes": 8076,
+      "sha256": "9a866266e0bfd40f13cf1d8b956de5e331b29fff2020502f62a8e9164b272d81"
     },
     "scripts/check_audit_workerd.sh": {
       "bytes": 3834,

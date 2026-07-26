@@ -9,9 +9,10 @@ audit has already happened.
 The review target is the signed `v0.9.1` tag at commit
 `b8486cf40cfa227b44062ee41bddb4a6b74132fa`. `target.toml` also pins the
 published wheel, source distribution, and official OWASP ASVS 5.0.0 CSV by
-SHA-256. The source tree, tests, and package metadata on this branch must
-remain byte-for-byte identical to that target; audit-only documentation,
-automation, and harnesses may be added after the tag.
+SHA-256. The checker exports the tagged tree into a disposable directory and
+collects its evidence tests there, so later development on `main` cannot
+silently replace the reviewed evidence and does not need to stop while the
+independent engagement is active.
 
 Reviewers should start with:
 

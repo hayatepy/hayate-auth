@@ -28,7 +28,6 @@ external = 2
 gap = 2
 
 [scope]
-immutable_paths = ["src", "tests", "pyproject.toml"]
 manifest_files = [
   "audit/README.md",
   "audit/PROCEDURES.md",
