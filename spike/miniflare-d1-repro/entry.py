@@ -1,4 +1,4 @@
-"""Minimal Python Worker + D1 probe for workers-sdk#14848."""
+"""Minimal Python Worker + D1 probe for hayate-auth issue 28."""
 
 from urllib.parse import urlsplit
 

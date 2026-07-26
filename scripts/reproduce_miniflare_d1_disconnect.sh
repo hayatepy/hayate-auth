@@ -33,10 +33,6 @@ cp "${repo_dir}/spike/as-workers/package-lock.json" "${tooling_dir}/package-lock
 
 cd "${tooling_dir}"
 npm ci --ignore-scripts >/dev/null
-if [[ "${MINIFLARE_LOOPBACK_PATCH:-0}" == "1" ]]; then
-  node "${repo_dir}/scripts/patch_miniflare_loopback.cjs" \
-    "${tooling_dir}/node_modules/miniflare/dist/src/index.js"
-fi
 
 wrangler="${tooling_dir}/node_modules/.bin/wrangler"
 cd "${work_dir}"
