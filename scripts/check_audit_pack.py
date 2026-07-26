@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 import tomllib
 import urllib.request
@@ -107,17 +108,6 @@ def verify_target(target: dict[str, Any]) -> None:
         if verified.returncode or f"[GNUPG:] VALIDSIG {subkey} " not in signature_status:
             fail(f"{tag} does not have a valid signature from pinned subkey {subkey}")
 
-    for path in target["scope"]["immutable_paths"]:
-        result = subprocess.run(
-            ["git", "diff", "--quiet", tag, "--", path],
-            cwd=ROOT,
-            check=False,
-        )
-        if result.returncode == 1:
-            fail(f"frozen source path differs from {tag}: {path}")
-        if result.returncode > 1:
-            fail(f"git diff failed for frozen source path: {path}")
-
     for kind in ("wheel", "sdist"):
         artifact = target["artifacts"][kind]
         actual = sha256(download(artifact["url"]))
@@ -152,11 +142,33 @@ def verify_asvs(target: dict[str, Any]) -> None:
 
 
 def verify_evidence(target: dict[str, Any]) -> None:
-    for relative in target["scope"]["evidence_paths"]:
-        if not (ROOT / relative).is_file():
-            fail(f"evidence path does not exist: {relative}")
+    tag = target["target"]["tag"]
+    archive = subprocess.run(
+        ["git", "archive", "--format=tar", tag],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+    )
+    if archive.returncode:
+        fail(f"could not export frozen evidence tree {tag}: {archive.stderr.decode()}")
 
-    collected = set(run("uv", "run", "pytest", "--collect-only", "-q").splitlines())
+    with tempfile.TemporaryDirectory(prefix="hayate-auth-audit-target-") as target_dir:
+        with tarfile.open(fileobj=io.BytesIO(archive.stdout), mode="r:") as source:
+            source.extractall(target_dir, filter="data")
+        frozen_root = Path(target_dir)
+        for relative in target["scope"]["evidence_paths"]:
+            if not (frozen_root / relative).is_file():
+                fail(f"evidence path does not exist in {tag}: {relative}")
+        result = subprocess.run(
+            ["uv", "run", "--locked", "pytest", "--collect-only", "-q"],
+            cwd=frozen_root,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode:
+            fail(f"could not collect frozen tests from {tag}:\n{result.stdout}{result.stderr}")
+        collected = set(result.stdout.splitlines())
     missing = sorted(set(target["scope"]["test_nodes"]) - collected)
     if missing:
         fail(f"test evidence was not collected: {', '.join(missing)}")
