@@ -12,10 +12,15 @@ port=8792
 server_pid=""
 
 cleanup() {
+  status=$?
   if [[ -n "${server_pid}" ]] && kill -0 "${server_pid}" 2>/dev/null; then
     kill "${server_pid}" 2>/dev/null || true
     wait "${server_pid}" 2>/dev/null || true
   fi
+  if [[ "${status}" -ne 0 ]] && [[ -f "${log_file}" ]]; then
+    cat "${log_file}"
+  fi
+  exit "${status}"
 }
 trap cleanup EXIT
 
@@ -93,7 +98,13 @@ def request(
         headers["cookie"] = cookie
     connection.request("POST", path, json.dumps(data), headers)
     response = connection.getresponse()
-    body = json.loads(response.read())
+    raw_body = response.read()
+    try:
+        body = json.loads(raw_body)
+    except json.JSONDecodeError as exc:
+        raise AssertionError(
+            f"{path} returned HTTP {response.status} with non-JSON body {raw_body!r}"
+        ) from exc
     set_cookie = response.getheader("set-cookie")
     connection.close()
     return response.status, body, set_cookie
