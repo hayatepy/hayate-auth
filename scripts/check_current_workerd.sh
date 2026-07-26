@@ -33,6 +33,7 @@ test -n "${wheel_path}"
 for file in entry.py package-lock.json package.json pylock.toml pyproject.toml wrangler.toml; do
   cp "${source_worker}/${file}" "${test_dir}/${file}"
 done
+cp "${repo_dir}/scripts/serve_current_workerd_direct.mjs" "${test_dir}/"
 
 cd "${test_dir}"
 npm ci --ignore-scripts
@@ -62,9 +63,9 @@ test -e python_modules/hayate_auth
 test -e python_modules/hayate_fetch
 test -e python_modules/hayate_mcp
 
-npx --no-install wrangler dev \
-  --port "${port}" \
-  --persist-to "${state_dir}" >"${log_file}" 2>&1 &
+node serve_current_workerd_direct.mjs \
+  "${port}" \
+  "${state_dir}" >"${log_file}" 2>&1 &
 server_pid=$!
 
 ready=false
@@ -168,10 +169,6 @@ session = cookie_pair(header)
 
 status, enrollment, _ = request("/api/auth/two-factor/enable", {}, cookie=session)
 assert status == 200
-# The local Miniflare D1 backend flushes persistence after returning the write
-# response. Hosted ARM64 runners have needed more than one second for that
-# dev-only file callback, so yield without weakening or retrying any assertion.
-time.sleep(3)
 status, _, _ = request(
     "/api/auth/two-factor/verify", {"code": "not-a-code"}, cookie=session
 )
@@ -192,7 +189,7 @@ assert (first, replay) == (200, 401)
 
 # Current-wheel OAuth management acceptance on the same real workerd + D1
 # runtime: public-client revocation, consent listing/revocation, and immediate
-# bearer rejection. The configured spike issuer defaults to port 8787.
+# bearer rejection.
 status, client_body, _ = request(
     "/api/auth/oauth2/register",
     {
@@ -206,7 +203,7 @@ status, client_body, _ = request(
 assert status == 201
 client_id = client_body["client_id"]
 redirect_uri = client_body["redirect_uris"][0]
-resource = "http://127.0.0.1:8787/protected"
+resource = f"http://127.0.0.1:{port}/protected"
 verifier = "workerd-oauth-verifier-with-sufficient-length-42"
 challenge = (
     base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
@@ -225,12 +222,12 @@ authorize_query = urlencode(
         "resource": resource,
     }
 )
-status, _, headers = raw_request(
+status, raw, headers = raw_request(
     "GET",
     f"/api/auth/oauth2/authorize?{authorize_query}",
     headers={"cookie": session},
 )
-assert status == 302
+assert status == 302, (status, raw, headers)
 pending_header = next(
     value for name, value in headers if name.lower() == "set-cookie"
 )
@@ -242,7 +239,6 @@ status, consent_body, _ = request(
 )
 assert status == 200
 code = parse_qs(urlsplit(consent_body["redirect_uri"]).query)["code"][0]
-time.sleep(1)
 
 
 def exchange_code(value: str) -> dict[str, Any]:
