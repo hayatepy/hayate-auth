@@ -729,17 +729,36 @@ async def test_code_replay_revokes_the_tokens_it_issued(auth_as):
     assert await auth_as.verify_oauth_token(access) is None
 
 
-async def test_concurrent_code_exchange_mints_exactly_one_token_family(auth_as):
+async def test_concurrent_code_exchange_mints_exactly_one_token_family(auth_as, monkeypatch):
     cookie = await signed_in_cookie(auth_as)
     client = await register(auth_as)
     verifier = "v" * 43
     code = await obtain_code(auth_as, cookie, client, verifier=verifier)
 
+    # This test targets the guarded 0 -> 1 claim when both requests read the
+    # unused code. A request that observes state 1 is a different, deliberately
+    # fail-closed replay-during-mint case covered by the next test.
+    initial_reads = 0
+    both_read_unused = asyncio.Event()
+    original_find_one = auth_as.adapter.find_one
+
+    async def synchronized_find_one(model, where):
+        nonlocal initial_reads
+        row = await original_find_one(model, where)
+        if model == "oauth_code" and row is not None and row["used"] == 0:
+            initial_reads += 1
+            if initial_reads == 2:
+                both_read_unused.set()
+            await both_read_unused.wait()
+        return row
+
+    monkeypatch.setattr(auth_as.adapter, "find_one", synchronized_find_one)
     first, second = await asyncio.gather(
         exchange(auth_as, client, code, verifier=verifier),
         exchange(auth_as, client, code, verifier=verifier),
     )
 
+    assert initial_reads == 2
     assert sorted((first.status, second.status)) == [200, 400]
     assert len(await auth_as.adapter.find_many("oauth_token", [])) == 1
 
