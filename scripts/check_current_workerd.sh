@@ -141,6 +141,10 @@ session = cookie_pair(header)
 
 status, enrollment, _ = request("/api/auth/two-factor/enable", {}, cookie=session)
 assert status == 200
+# The local Miniflare D1 backend flushes persistence after returning the write
+# response. Yield before the immediate read-back request so that dev-only file
+# persistence work cannot tear down the workerd upstream connection.
+time.sleep(1)
 status, _, _ = request(
     "/api/auth/two-factor/verify", {"code": "not-a-code"}, cookie=session
 )
