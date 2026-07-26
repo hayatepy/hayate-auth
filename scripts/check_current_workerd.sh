@@ -64,8 +64,7 @@ test -e python_modules/hayate_mcp
 
 npx --no-install wrangler dev \
   --port "${port}" \
-  --persist-to "${state_dir}" \
-  --var HAYATE_AUTH_SPIKE_KDF_LOG_N:14 >"${log_file}" 2>&1 &
+  --persist-to "${state_dir}" >"${log_file}" 2>&1 &
 server_pid=$!
 
 ready=false

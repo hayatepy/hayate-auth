@@ -49,8 +49,8 @@
       "sha256": "a0e0593f3410e7c7f39638cb660dfad618b98f344157170cf0e577a50cbfc027"
     },
     "spike/as-workers/entry.py": {
-      "bytes": 5706,
-      "sha256": "df056188e9a7c409091df603e4cbaae197106375198d8f0a4d3d1e8ca62d1825"
+      "bytes": 5233,
+      "sha256": "06eb92cdd2ce9107cbacadd4787ae939fe0726f5b7f806fd25407fa63bf39585"
     },
     "spike/as-workers/package-lock.json": {
       "bytes": 50080,
