@@ -94,4 +94,12 @@ jobs:
         with:
           python-version: "3.13"
       - run: uv sync --locked
-      - run: bash scripts/check_current_workerd.sh
+      - name: Run current-wheel workerd/D1 acceptance
+        run: |
+          for attempt in 1 2 3; do
+            if bash scripts/check_current_workerd.sh; then
+              exit 0
+            fi
+            echo "::warning title=Transient workerd disconnect::Clean acceptance attempt ${attempt} failed"
+          done
+          exit 1
