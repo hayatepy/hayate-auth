@@ -137,7 +137,11 @@ def _same_origin_or_loopback_redirect(client_id: str, redirect_uri: str) -> bool
 
 
 def validate_metadata_document(
-    client_id: str, raw: object, *, scopes_supported: tuple[str, ...]
+    client_id: str,
+    raw: object,
+    *,
+    scopes_supported: tuple[str, ...],
+    dpop_supported: bool = False,
 ) -> dict[str, Any]:
     """Validate and reduce an untrusted CIMD document to stored client fields."""
     if not isinstance(raw, Mapping):
@@ -198,6 +202,11 @@ def validate_metadata_document(
             raise InvalidClientMetadata("scope must be a string")
         if scopes_supported and any(item not in scopes_supported for item in scope.split()):
             raise InvalidClientMetadata("metadata document contains an unsupported scope")
+    dpop_bound_access_tokens = data.get("dpop_bound_access_tokens", False)
+    if not isinstance(dpop_bound_access_tokens, bool):
+        raise InvalidClientMetadata("dpop_bound_access_tokens must be a boolean")
+    if dpop_bound_access_tokens and not dpop_supported:
+        raise InvalidClientMetadata("dpop_bound_access_tokens is not supported")
 
     return {
         "client_id": client_id,
@@ -206,6 +215,7 @@ def validate_metadata_document(
         "token_endpoint_auth_method": "none",
         "grant_types": grant_types,
         "scope": scope,
+        "dpop_bound_access_tokens": dpop_bound_access_tokens,
     }
 
 
@@ -242,6 +252,7 @@ async def _fetch_document(
     client_id: str,
     *,
     scopes_supported: tuple[str, ...],
+    dpop_supported: bool,
 ) -> dict[str, Any]:
     validate_client_id_url(client_id)
     if config.allow_url is not None:
@@ -269,6 +280,7 @@ async def _fetch_document(
         client_id,
         decoded,
         scopes_supported=scopes_supported,
+        dpop_supported=dpop_supported,
     )
 
 
@@ -300,6 +312,7 @@ async def resolve_metadata_client(
         config,
         client_id,
         scopes_supported=authorization_server.scopes_supported,
+        dpop_supported=authorization_server.dpop is not None,
     )
     stamp = sessions.isoformat(sessions.now())
     values = {
@@ -309,6 +322,7 @@ async def resolve_metadata_client(
         "token_endpoint_auth_method": metadata["token_endpoint_auth_method"],
         "grant_types": json.dumps(metadata["grant_types"]),
         "scope": metadata["scope"],
+        "dpop_bound_access_tokens": int(metadata["dpop_bound_access_tokens"]),
         "updated_at": stamp,
     }
     if existing is not None:

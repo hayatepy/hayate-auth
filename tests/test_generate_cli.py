@@ -54,6 +54,24 @@ def test_upgrade_from_091_preserves_existing_two_factor(capsys):
             'ON "oauth_token"(user_id, client_id);\n',
             "",
         )
+        .replace(
+            "  dpop_bound_access_tokens INTEGER NOT NULL DEFAULT 0,\n",
+            "",
+        )
+        .replace("  dpop_jkt TEXT,\n", "")
+        .replace(
+            'CREATE TABLE IF NOT EXISTS "dpop_replay" (\n'
+            "  id TEXT PRIMARY KEY,\n"
+            "  jkt TEXT NOT NULL,\n"
+            "  jti TEXT NOT NULL,\n"
+            "  expires_at TEXT NOT NULL,\n"
+            "  created_at TEXT NOT NULL,\n"
+            "  UNIQUE (jkt, jti)\n"
+            ");\n"
+            "CREATE INDEX IF NOT EXISTS dpop_replay_expires_at "
+            'ON "dpop_replay"(expires_at);\n',
+            "",
+        )
     )
     connection = sqlite3.connect(":memory:")
     connection.executescript(legacy_schema)

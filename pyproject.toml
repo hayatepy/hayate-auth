@@ -25,6 +25,7 @@ dependencies = ["hayate>=0.8.0", "hayate-fetch>=0.1.2"]
 
 [project.optional-dependencies]
 passkey = ["webauthn>=3.0.0"]
+dpop = ["cryptography>=44.0.0"]
 
 [project.urls]
 Repository = "https://github.com/hayatepy/hayate-auth"

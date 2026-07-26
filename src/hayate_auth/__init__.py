@@ -12,6 +12,15 @@ from .crypto import (
     UnsupportedHashError,
     default_backend,
 )
+from .dpop import (
+    AdapterDPoPReplayStore,
+    CryptographyDPoPSignatureVerifier,
+    DPoPConfig,
+    DPoPRequestVerifier,
+    DPoPValidationError,
+    InMemoryDPoPReplayStore,
+    WebCryptoDPoPSignatureVerifier,
+)
 from .introspection import OAuthIntrospectionVerifier
 from .lazy import LazyAuth
 from .oauth import OAuthProvider, github, google
@@ -30,12 +39,18 @@ __version__ = "0.9.1"
 __all__ = [
     "COMMON_PASSWORDS",
     "Adapter",
+    "AdapterDPoPReplayStore",
     "Auth",
     "AuthPlugin",
     "AuthorizationServer",
     "ClientIdMetadataDocuments",
     "CompromisedPasswordChecker",
     "CryptoBackend",
+    "CryptographyDPoPSignatureVerifier",
+    "DPoPConfig",
+    "DPoPRequestVerifier",
+    "DPoPValidationError",
+    "InMemoryDPoPReplayStore",
     "LazyAuth",
     "OAuthIntrospectionVerifier",
     "OAuthProvider",
@@ -47,6 +62,7 @@ __all__ = [
     "Principal",
     "ScryptBackend",
     "UnsupportedHashError",
+    "WebCryptoDPoPSignatureVerifier",
     "Where",
     "__version__",
     "default_backend",

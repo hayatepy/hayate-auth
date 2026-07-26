@@ -9,6 +9,7 @@ from typing import Any
 from urllib.parse import quote_plus, urlencode, urlsplit
 
 from .authorization_server import LOOPBACK_HOSTS, _canonical_resource
+from .dpop import validate_jkt
 
 
 @dataclass(frozen=True)
@@ -137,4 +138,15 @@ class OAuthIntrospectionVerifier:
         token_id = document.get("jti")
         if isinstance(token_id, str):
             principal["token_id"] = token_id
+        token_type = document.get("token_type")
+        confirmation = document.get("cnf")
+        if token_type == "DPoP":
+            if not isinstance(confirmation, dict) or not isinstance(confirmation.get("jkt"), str):
+                return None
+            try:
+                principal["dpop_jkt"] = validate_jkt(confirmation["jkt"])
+            except ValueError:
+                return None
+        elif confirmation is not None or token_type not in (None, "Bearer"):
+            return None
         return principal

@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_worker="${repo_dir}/spike/as-workers"
+dpop_worker_entry="${repo_dir}/spike/dpop-workers/entry.py"
 test_dir="$(mktemp -d)"
 log_file="${test_dir}.log"
 # Keep the D1 persistence directory outside the watched Worker source tree;
@@ -33,6 +34,7 @@ test -n "${wheel_path}"
 for file in entry.py package-lock.json package.json pylock.toml pyproject.toml wrangler.toml; do
   cp "${source_worker}/${file}" "${test_dir}/${file}"
 done
+cp "${dpop_worker_entry}" "${test_dir}/entry.py"
 cp "${repo_dir}/scripts/serve_current_workerd_direct.mjs" "${test_dir}/"
 
 cd "${test_dir}"
@@ -99,7 +101,12 @@ from http.cookies import SimpleCookie
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlsplit
 
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+
 from hayate_auth import totp
+from hayate_auth.dpop import access_token_hash, jwk_thumbprint
 
 port = int(sys.argv[1])
 
@@ -151,6 +158,32 @@ def cookie_pair(header: str | None) -> str:
     parsed.load(header)
     key = next(iter(parsed))
     return f"{key}={parsed[key].value}"
+
+
+def b64url(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).decode().rstrip("=")
+
+
+def dpop_proof(
+    private_key: Any,
+    public_jwk: dict[str, str],
+    *,
+    jti: str,
+    method: str,
+    url: str,
+    access_token: str | None = None,
+) -> str:
+    header = {"typ": "dpop+jwt", "alg": "ES256", "jwk": public_jwk}
+    payload = {"jti": jti, "htm": method, "htu": url, "iat": int(time.time())}
+    if access_token is not None:
+        payload["ath"] = access_token_hash(access_token)
+    encoded_header = b64url(json.dumps(header, separators=(",", ":")).encode())
+    encoded_payload = b64url(json.dumps(payload, separators=(",", ":")).encode())
+    signing_input = f"{encoded_header}.{encoded_payload}".encode()
+    der = private_key.sign(signing_input, ec.ECDSA(hashes.SHA256()))
+    r, s = decode_dss_signature(der)
+    signature = r.to_bytes(32) + s.to_bytes(32)
+    return f"{encoded_header}.{encoded_payload}.{b64url(signature)}"
 
 
 status, body, _ = request(
@@ -284,6 +317,147 @@ status, _, _ = raw_request(
 )
 assert status == 401
 
+# RFC 9449 feasibility on the same workerd isolate. The token endpoint
+# verifies ES256 through WebCrypto and records proof jti values atomically in
+# D1; reusing a proof for a fresh authorization code is rejected.
+private_key = ec.generate_private_key(ec.SECP256R1())
+public_numbers = private_key.public_key().public_numbers()
+public_jwk = {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": b64url(public_numbers.x.to_bytes(32)),
+    "y": b64url(public_numbers.y.to_bytes(32)),
+}
+jkt = jwk_thumbprint(public_jwk)
+dpop_resource = f"http://127.0.0.1:{port}/dpop-protected"
+status, dpop_client, _ = request(
+    "/api/auth/oauth2/register",
+    {
+        "client_name": "current-workerd-dpop-client",
+        "redirect_uris": ["http://127.0.0.1/dpop-callback"],
+        "token_endpoint_auth_method": "none",
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "dpop_bound_access_tokens": True,
+    },
+)
+assert status == 201
+dpop_client_id = dpop_client["client_id"]
+dpop_redirect_uri = dpop_client["redirect_uris"][0]
+dpop_verifier = "workerd-dpop-verifier-with-sufficient-length-42"
+dpop_challenge = b64url(hashlib.sha256(dpop_verifier.encode()).digest())
+dpop_authorize_query = urlencode(
+    {
+        "response_type": "code",
+        "client_id": dpop_client_id,
+        "redirect_uri": dpop_redirect_uri,
+        "state": "workerd-dpop",
+        "code_challenge": dpop_challenge,
+        "code_challenge_method": "S256",
+        "scope": "mcp",
+        "resource": dpop_resource,
+        "dpop_jkt": jkt,
+    }
+)
+
+
+def authorize_dpop() -> str:
+    status, raw, headers = raw_request(
+        "GET",
+        f"/api/auth/oauth2/authorize?{dpop_authorize_query}",
+        headers={"cookie": session},
+    )
+    assert status == 302, (status, raw, headers)
+    location = next(value for name, value in headers if name.lower() == "location")
+    if "/consent" not in location:
+        return parse_qs(urlsplit(location).query)["code"][0]
+    pending_header = next(
+        value for name, value in headers if name.lower() == "set-cookie"
+    )
+    status, body, _ = request(
+        "/api/auth/oauth2/consent",
+        {"accept": True},
+        cookie=f"{session}; {cookie_pair(pending_header)}",
+    )
+    assert status == 200
+    return parse_qs(urlsplit(body["redirect_uri"]).query)["code"][0]
+
+
+def exchange_dpop(value: str, proof: str) -> tuple[int, dict[str, Any]]:
+    status, raw, _ = raw_request(
+        "POST",
+        "/api/auth/oauth2/token",
+        urlencode(
+            {
+                "grant_type": "authorization_code",
+                "code": value,
+                "code_verifier": dpop_verifier,
+                "redirect_uri": dpop_redirect_uri,
+                "client_id": dpop_client_id,
+                "resource": dpop_resource,
+            }
+        ),
+        {
+            "content-type": "application/x-www-form-urlencoded",
+            "dpop": proof,
+        },
+    )
+    return status, json.loads(raw)
+
+
+token_url = f"http://127.0.0.1:{port}/api/auth/oauth2/token"
+shared_proof = dpop_proof(
+    private_key,
+    public_jwk,
+    jti="workerd-shared-proof",
+    method="POST",
+    url=token_url,
+)
+status, dpop_tokens = exchange_dpop(authorize_dpop(), shared_proof)
+assert status == 200, dpop_tokens
+assert dpop_tokens["token_type"] == "DPoP"
+resource_proof = dpop_proof(
+    private_key,
+    public_jwk,
+    jti="workerd-resource-proof",
+    method="GET",
+    url=dpop_resource,
+    access_token=dpop_tokens["access_token"],
+)
+status, _, _ = raw_request(
+    "GET",
+    "/dpop-protected",
+    headers={
+        "authorization": f"DPoP {dpop_tokens['access_token']}",
+        "dpop": resource_proof,
+    },
+)
+assert status == 200
+status, _, _ = raw_request(
+    "GET",
+    "/dpop-protected",
+    headers={
+        "authorization": f"DPoP {dpop_tokens['access_token']}",
+        "dpop": resource_proof,
+    },
+)
+assert status == 401
+second_dpop_code = authorize_dpop()
+status, replay_error = exchange_dpop(second_dpop_code, shared_proof)
+assert status == 400
+assert replay_error["error"] == "invalid_dpop_proof"
+status, dpop_tokens = exchange_dpop(
+    second_dpop_code,
+    dpop_proof(
+        private_key,
+        public_jwk,
+        jti="workerd-fresh-proof",
+        method="POST",
+        url=token_url,
+    ),
+)
+assert status == 200, dpop_tokens
+
 # Existing consent remains after a client revokes one token family. Mint a
 # second family without another consent hop, then revoke the user's grant.
 status, _, headers = raw_request(
@@ -302,8 +476,8 @@ status, raw, _ = raw_request(
 )
 assert status == 200
 consents = json.loads(raw)["consents"]
-assert len(consents) == 1
-assert consents[0]["client_id"] == client_id
+matching_consents = [item for item in consents if item["client_id"] == client_id]
+assert len(matching_consents) == 1
 status, body, _ = request(
     "/api/auth/oauth2/consents/revoke",
     {"client_id": client_id},
@@ -319,4 +493,4 @@ status, _, _ = raw_request(
 assert status == 401
 PY
 
-echo "current wheel workerd/D1 TOTP and OAuth revocation profile passed"
+echo "current wheel workerd/D1 TOTP, OAuth revocation, and DPoP profile passed"

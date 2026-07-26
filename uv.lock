@@ -253,6 +253,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+dpop = [
+    { name = "cryptography" },
+]
 passkey = [
     { name = "webauthn" },
 ]
@@ -268,11 +271,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", marker = "extra == 'dpop'", specifier = ">=44.0.0" },
     { name = "hayate", specifier = ">=0.8.0" },
     { name = "hayate-fetch", specifier = ">=0.1.2" },
     { name = "webauthn", marker = "extra == 'passkey'", specifier = ">=3.0.0" },
 ]
-provides-extras = ["passkey"]
+provides-extras = ["passkey", "dpop"]
 
 [package.metadata.requires-dev]
 dev = [

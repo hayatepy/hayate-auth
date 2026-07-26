@@ -23,6 +23,7 @@ from mcp.server.lowlevel import Server
 from hayate_auth import (
     Auth,
     AuthorizationServer,
+    DPoPConfig,
     OAuthIntrospectionVerifier,
     OAuthResourceServer,
 )
@@ -48,6 +49,7 @@ auth = Auth(
         consent_url="/consent",
         scopes_supported=("mcp",),
         resource=RESOURCE,
+        dpop=DPoPConfig(),
         resource_servers=(
             OAuthResourceServer(
                 client_id=INTROSPECTION_CLIENT_ID,

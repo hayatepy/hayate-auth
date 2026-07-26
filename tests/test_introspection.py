@@ -61,6 +61,47 @@ async def test_separated_resource_server_verifier_returns_mcp_claims():
     }
 
 
+async def test_separated_verifier_preserves_dpop_confirmation_for_request_validation():
+    jkt = "A" * 43
+    backend = Backend(
+        Response(
+            json.dumps(
+                {
+                    "active": True,
+                    "sub": "user-1",
+                    "aud": "https://mcp.example/mcp",
+                    "token_type": "DPoP",
+                    "cnf": {"jkt": jkt},
+                }
+            ),
+            headers={"content-type": "application/json"},
+        )
+    )
+    verifier = OAuthIntrospectionVerifier(
+        endpoint="https://auth.example/introspect",
+        client_id="mcp-rs",
+        client_secret="secret",
+        resource="https://mcp.example/mcp",
+        backend=backend,
+    )
+    claims = await verifier("hat_token")
+    assert claims is not None
+    assert claims["dpop_jkt"] == jkt
+
+    backend.response = Response(
+        json.dumps(
+            {
+                "active": True,
+                "sub": "user-1",
+                "aud": "https://mcp.example/mcp",
+                "token_type": "DPoP",
+            }
+        ),
+        headers={"content-type": "application/json"},
+    )
+    assert await verifier("hat_token") is None
+
+
 @pytest.mark.parametrize(
     "response",
     [
