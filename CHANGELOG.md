@@ -11,6 +11,10 @@ All notable changes to hayate-auth are documented here.
   `OAuthIntrospectionVerifier` for
   [separated MCP resource servers](docs/oauth-revocation-introspection.md).
 - Add authenticated end-user consent listing and revocation APIs.
+- Add one injectable `PasswordPolicy` for sign-up, reset, and authenticated
+  password change, with a normalized local common-password baseline, a bounded
+  asynchronous breach checker, and Better Auth-compatible change-password
+  request fields.
 
 ### Security
 
@@ -23,6 +27,10 @@ All notable changes to hayate-auth are documented here.
   resource server's exact RFC 8707 resource.
 - Add explicit SQLite/PostgreSQL/D1 migration DDL for the persisted
   `last_used_step` replay boundary and versioned OAuth consent grants.
+- Apply the same password decision before every credential mutation. External
+  checker failures fail closed by default without creating users, changing
+  credentials, or consuming reset tokens; fail-open behavior requires an
+  explicit configuration choice.
 
 ## [0.9.1] - 2026-07-26
 

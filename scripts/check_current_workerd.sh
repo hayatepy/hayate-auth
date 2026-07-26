@@ -152,6 +152,13 @@ def cookie_pair(header: str | None) -> str:
     return f"{key}={parsed[key].value}"
 
 
+status, body, _ = request(
+    "/api/auth/sign-up/email",
+    {"email": "blocked@example.com", "password": "password"},
+)
+assert status == 400
+assert body["title"] == "Password is commonly used or has been compromised"
+
 status, _, header = request(
     "/api/auth/sign-up/email",
     {"email": "workerd-totp@example.com", "password": "long enough"},

@@ -17,7 +17,7 @@ from hayate import Headers, Request, Response, problem
 from . import session as sessions
 from ._uuid7 import new_id
 from .adapter import Where
-from .password import email_error, normalize_email, password_error
+from .password import PasswordPolicyUnavailable, email_error, normalize_email
 
 if TYPE_CHECKING:
     from .auth import Auth
@@ -48,6 +48,14 @@ def public_user(row: dict[str, Any]) -> dict[str, Any]:
     return user
 
 
+async def _new_password_problem(auth: Auth, password: object) -> Response | None:
+    try:
+        error = await auth.password_policy.error(password)
+    except PasswordPolicyUnavailable:
+        return problem(503, title="Password policy temporarily unavailable")
+    return problem(400, title=error) if error is not None else None
+
+
 async def _issue_session(auth: Auth, request: Request, user_row: dict[str, Any]) -> Response:
     token, _ = await sessions.create_session(
         auth.adapter,
@@ -70,8 +78,8 @@ async def sign_up_email(auth: Auth, request: Request) -> Response:
 
     if (error := email_error(data.get("email"))) is not None:
         return problem(400, title=error)
-    if (error := password_error(data.get("password"))) is not None:
-        return problem(400, title=error)
+    if (policy_problem := await _new_password_problem(auth, data.get("password"))) is not None:
+        return policy_problem
     name = data.get("name")
     if name is not None and not isinstance(name, str):
         return problem(400, title="Name must be a string")
@@ -190,8 +198,8 @@ async def reset_password(auth: Auth, request: Request) -> Response:
     token = data.get("token")
     if not isinstance(token, str) or not token:
         return problem(400, title="Token is required")
-    if (error := password_error(data.get("password"))) is not None:
-        return problem(400, title=error)
+    if (policy_problem := await _new_password_problem(auth, data.get("password"))) is not None:
+        return policy_problem
 
     row = await consume_verification(auth.adapter, token, prefix="reset:")
     if row is None:
@@ -209,6 +217,57 @@ async def reset_password(auth: Auth, request: Request) -> Response:
     # A reset invalidates every existing session for the user (ASVS V7).
     await auth.adapter.delete("session", [Where("user_id", user_id)])
     return _json_response({"success": True})
+
+
+async def change_password(auth: Auth, request: Request) -> Response:
+    """Change an authenticated credential after verifying the current value."""
+    data = await _read_json_object(request)
+    if isinstance(data, Response):
+        return data
+    current_password = data.get("currentPassword")
+    new_password = data.get("newPassword")
+    revoke_others = data.get("revokeOtherSessions", False)
+    if not isinstance(current_password, str) or not current_password:
+        return problem(400, title="Current password is required")
+    if not isinstance(revoke_others, bool):
+        return problem(400, title="revokeOtherSessions must be a boolean")
+
+    resolved = await auth.get_session(request)
+    if resolved is None:
+        return problem(401, title="Authentication required")
+    user, current_session = resolved
+    account = await auth.adapter.find_one(
+        "account",
+        [Where("user_id", user["id"]), Where("provider_id", "credential")],
+    )
+    stored = account["password_hash"] if account is not None else None
+    if stored is None:
+        await auth.crypto.verify_password(current_password, await auth._dummy_hash())
+        return problem(401, title="Current password is incorrect")
+    if not await auth.crypto.verify_password(current_password, stored):
+        return problem(401, title="Current password is incorrect")
+
+    if (policy_problem := await _new_password_problem(auth, new_password)) is not None:
+        return policy_problem
+    assert isinstance(new_password, str)
+    assert account is not None
+    updated = await auth.adapter.update(
+        "account",
+        [Where("id", account["id"])],
+        {
+            "password_hash": await auth.crypto.hash_password(new_password),
+            "updated_at": sessions.isoformat(sessions.now()),
+        },
+    )
+    if updated is None:
+        return problem(409, title="Password could not be changed")
+
+    if revoke_others:
+        active = await auth.adapter.find_many("session", [Where("user_id", user["id"])])
+        for row in active:
+            if row["id"] != current_session["id"]:
+                await auth.adapter.delete("session", [Where("id", row["id"])])
+    return _json_response({"success": True, "user": user})
 
 
 async def verify_email(auth: Auth, request: Request) -> Response:
@@ -258,6 +317,7 @@ ROUTES = {
     ("GET", "/get-session"): get_session,
     ("POST", "/forget-password"): forget_password,
     ("POST", "/reset-password"): reset_password,
+    ("POST", "/change-password"): change_password,
     ("GET", "/verify-email"): verify_email,
     ("POST", "/sign-in/social"): _lazy("oauth", "sign_in_social"),
     ("POST", "/sign-in/two-factor"): _lazy("two_factor", "sign_in"),
