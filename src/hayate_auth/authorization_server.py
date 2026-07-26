@@ -1125,9 +1125,7 @@ def _authenticate_resource_server(
         (candidate for candidate in config.resource_servers if candidate.client_id == client_id),
         None,
     )
-    if resource_server is None or not hmac.compare_digest(
-        _hash(secret), _hash(resource_server.client_secret)
-    ):
+    if resource_server is None or not hmac.compare_digest(secret, resource_server.client_secret):
         return _oauth_error(
             401,
             "invalid_client",
