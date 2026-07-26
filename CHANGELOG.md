@@ -2,6 +2,13 @@
 
 All notable changes to hayate-auth are documented here.
 
+## [0.9.1] - 2026-07-26
+
+### Changed
+
+- Link the canonical ecosystem start page, production golden app, and tested
+  compatibility evidence from the published package description.
+
 ## [0.9.0] - 2026-07-24
 
 ### Security
