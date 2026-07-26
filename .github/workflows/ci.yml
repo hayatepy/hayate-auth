@@ -82,24 +82,15 @@ jobs:
 
   current-workerd-d1:
     runs-on: ubuntu-latest
+    container:
+      image: node:24-bookworm@sha256:5711a0d445a1af54af9589066c646df387d1831a608226f4cd694fc59e745059
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "24"
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: "3.13"
       - run: uv sync --locked
-      - name: Run current-wheel workerd/D1 acceptance
-        run: |
-          for attempt in 1 2 3; do
-            if bash scripts/check_current_workerd.sh; then
-              exit 0
-            fi
-            echo "::warning title=Transient workerd disconnect::Clean acceptance attempt ${attempt} failed"
-          done
-          exit 1
+      - run: bash scripts/check_current_workerd.sh
