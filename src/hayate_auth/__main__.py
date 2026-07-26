@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .schema import DIALECTS
+from .schema import DIALECTS, MIGRATIONS
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -17,9 +17,19 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     generate = commands.add_parser("generate", help="print the schema DDL")
     generate.add_argument("--dialect", choices=sorted(DIALECTS), default="sqlite")
+    generate.add_argument(
+        "--upgrade-from",
+        choices=sorted(MIGRATIONS),
+        help="emit only the explicit migration from this released version",
+    )
     args = parser.parse_args(argv)
 
-    print(DIALECTS[args.dialect], end="")
+    ddl = (
+        MIGRATIONS[args.upgrade_from][args.dialect]
+        if args.upgrade_from is not None
+        else DIALECTS[args.dialect]
+    )
+    print(ddl, end="")
     return 0
 
 

@@ -36,16 +36,30 @@ def code_at(secret: str, moment: float) -> str:
     return _hotp(secret, int(moment // PERIOD))
 
 
-def verify(secret: str, code: str, *, at: float | None = None, window: int = 1) -> bool:
-    """Constant-time check across +/- ``window`` steps (clock-skew tolerance)."""
+def matching_step(
+    secret: str, code: str, *, at: float | None = None, window: int = 1
+) -> int | None:
+    """Return the highest matching time step inside the accepted clock window.
+
+    Every candidate is compared before returning. The concrete step lets the
+    persistence layer atomically reject replay and state rollback; a boolean
+    alone cannot enforce single use across processes or Worker isolates.
+    """
     if not code or not code.isdigit():
-        return False
+        return None
     now = at if at is not None else time.time()
     counter = int(now // PERIOD)
+    matched: int | None = None
     for step in range(-window, window + 1):
-        if hmac.compare_digest(_hotp(secret, counter + step), code):
-            return True
-    return False
+        candidate = counter + step
+        if hmac.compare_digest(_hotp(secret, candidate), code):
+            matched = candidate
+    return matched
+
+
+def verify(secret: str, code: str, *, at: float | None = None, window: int = 1) -> bool:
+    """Constant-time check across +/- ``window`` steps (clock-skew tolerance)."""
+    return matching_step(secret, code, at=at, window=window) is not None
 
 
 def provisioning_uri(secret: str, *, account_name: str, issuer: str) -> str:

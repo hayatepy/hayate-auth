@@ -392,6 +392,7 @@ hayate-auth/
 | v0.7 | **出荷(2026-07-23)**: **magic link**(プラグインとして新規、§20.1)+ **プラグイン API 抽出**(`AuthPlugin(id, routes)`、API キーを内部移植 — §20.2)+ **passkey**(WebAuthn L3、py_webauthn、`[passkey]` extra、§20.3) | 仮想 authenticator の実 ceremony で py_webauthn の実検証経路をテスト(モックなし。v0.9 で abandoned 外部 fixture からリポジトリ内実装へ移行)。攻撃面: 列挙防止 / token 混同 / open redirect / origin 不一致 / **sign counter 巻き戻し** / attestation 再送 / owner 越権。ASVS 37→48。19 テスト追加(全 153) |
 | v0.8 | **出荷準備(2026-07-24)**: MCP 2025-11-25 Client ID Metadata Documents、RFC 8707 `resource` 必須化、atomic `update_many`、共通 Principal/Bearer/scope、OpenAPI security、LazyAuth、`py.typed` | better-auth 1.6 の atomic consume/update と 1.7 beta の CIMD 検証を参照。コード/refresh の同時交換は勝者 1 件、CIMD は URL policy・5KiB 上限・redirect/secret 検査、全 176 テスト + strict mypy 28 files ✅ |
 | v0.9 | **出荷準備(2026-07-24)**: code/refresh の mint-gap replay を durable marker + guarded finalization で閉鎖。WebAuthn 3.x の安全な依存列へ更新 | insert 中 replay の強制 interleaving 2 ケース、実 verifier を通す仮想 authenticator、全依存 vulnerability 0 を release gate に固定 |
+| v0.10 | **実装中**: TOTP の受理済み time step を永続化し、同一・過去 step の再利用を guarded atomic update で拒否 | SQLite/D1 の同時 redemption は勝者1件。0.9.1 からの明示 migration DDL、隣接 window の rollback 回帰、ASVS `v5.0.0-6.5.1` を次の監査 target で再評価 |
 | v1.0 | API 凍結 | 本体 v1.0 より後。基準は本体に倣い外部利用の証拠を要件化 |
 
 ### 決定済み(2026-07-22)

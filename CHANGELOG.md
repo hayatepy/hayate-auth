@@ -2,6 +2,15 @@
 
 All notable changes to hayate-auth are documented here.
 
+## Unreleased
+
+### Security
+
+- Reject reuse of an accepted TOTP time step, including concurrent redemption
+  and older adjacent-window codes, with a guarded atomic adapter transition.
+- Add explicit SQLite/PostgreSQL/D1 migration DDL for the persisted
+  `last_used_step` replay boundary.
+
 ## [0.9.1] - 2026-07-26
 
 ### Changed

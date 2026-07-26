@@ -175,6 +175,10 @@ stolen password alone never signs in.
 Email delivery is your callback (`send_reset_password` / `send_verification_email`);
 the core mints and verifies tokens but never builds URLs or sends mail. Generate
 migration DDL with `python -m hayate_auth generate --dialect sqlite|postgres|d1`.
+When upgrading an existing 0.9.1 database to the next release, emit the
+single-use TOTP column migration with
+`python -m hayate_auth generate --dialect <dialect> --upgrade-from 0.9.1` and
+apply it exactly once before deploying the new code.
 
 OAuth providers are injected; the token exchange runs over
 [hayate-fetch](https://github.com/hayatepy/hayate-fetch), so it works on ASGI
@@ -224,11 +228,12 @@ auth = Auth(
 - TOTP seeds and upstream provider access/refresh tokens are stored
   recoverably. Production databases and backups must be access-controlled and
   encrypted; see [SECURITY.md](SECURITY.md) for known limitations.
-- Authorization-server adapters must implement atomic `update_many()` and
-  return the affected-row count. This prevents concurrent authorization-code
-  or refresh-token redemption from minting multiple token families. Durable
-  compromise markers and guarded post-insert finalization also prevent replay
-  detection during token creation from leaving a live family.
+- Adapters must implement atomic `update_many()` and return the affected-row
+  count. This is the security boundary for single-use TOTP steps and prevents
+  concurrent authorization-code or refresh-token redemption from minting
+  multiple token families. Durable compromise markers and guarded post-insert
+  finalization also prevent replay detection during token creation from
+  leaving a live family.
 
 ## License
 
