@@ -60,16 +60,8 @@ def test_upgrade_from_091_preserves_existing_two_factor(capsys):
         )
         .replace("  dpop_jkt TEXT,\n", "")
         .replace(
-            'CREATE TABLE IF NOT EXISTS "dpop_replay" (\n'
-            "  id TEXT PRIMARY KEY,\n"
-            "  jkt TEXT NOT NULL,\n"
-            "  jti TEXT NOT NULL,\n"
-            "  expires_at TEXT NOT NULL,\n"
-            "  created_at TEXT NOT NULL,\n"
-            "  UNIQUE (jkt, jti)\n"
-            ");\n"
-            "CREATE INDEX IF NOT EXISTS dpop_replay_expires_at "
-            'ON "dpop_replay"(expires_at);\n',
+            "CREATE UNIQUE INDEX IF NOT EXISTS verification_identifier_value_hash\n"
+            '  ON "verification"(identifier, value_hash);\n',
             "",
         )
     )

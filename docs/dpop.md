@@ -78,11 +78,13 @@ every token request requires a proof.
 
 ## Replay and nonce policy
 
-`AdapterDPoPReplayStore` uses a database `UNIQUE (jkt, jti)` constraint as the
-atomic replay boundary. Accepted proofs cost one steady-state `INSERT`;
-expired-row cleanup costs one amortized `DELETE` per configured interval.
-ASGI replicas and Workers isolates must share the same database. The in-memory
-store is for single-process tests and feasibility work only.
+`AdapterDPoPReplayStore` stores a namespaced RFC 7638 thumbprint and a SHA-256
+`jti` digest in the existing `verification` model. Its database
+`UNIQUE (identifier, value_hash)` constraint is the atomic replay boundary.
+Accepted proofs cost one steady-state `INSERT`; expired-row cleanup costs one
+amortized `DELETE` per configured interval. ASGI replicas and Workers isolates
+must share the same database. The in-memory store is for single-process tests
+and feasibility work only.
 
 The RFC 9449 server-provided nonce mechanism is optional. hayate-auth does not
 require it in this profile because:
@@ -110,10 +112,10 @@ The 2026-07-27 macOS/SQLite run in this repository measured:
 
 | Measure | Result |
 |---|---:|
-| Accepted proof throughput | 1,803 proofs/s |
-| Write latency median / p95 / p99 | 0.4587 / 0.7809 / 2.3686 ms |
-| Replay rejection | 0.2308 ms |
-| SQLite growth | 364.54 bytes/proof |
+| Accepted proof throughput | 1,669.1 proofs/s |
+| Write latency median / p95 / p99 | 0.4010 / 0.7753 / 5.8827 ms |
+| Replay rejection | 0.2428 ms |
+| SQLite growth | 408.78 bytes/proof |
 
 These numbers are a local storage baseline, not a D1 latency claim. The
 operation count is portable. Measure production D1, Postgres, or Redis latency

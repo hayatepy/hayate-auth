@@ -100,7 +100,6 @@ MODELS: dict[str, tuple[str, ...]] = {
         "revoked",
         "created_at",
     ),
-    "dpop_replay": ("id", "jkt", "jti", "expires_at", "created_at"),
     "oauth_consent": (
         "id",
         "user_id",
@@ -167,6 +166,8 @@ CREATE TABLE IF NOT EXISTS "verification" (
   expires_at TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS verification_identifier_value_hash
+  ON "verification"(identifier, value_hash);
 CREATE TABLE IF NOT EXISTS "two_factor" (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL UNIQUE REFERENCES "user"(id) ON DELETE CASCADE,
@@ -239,15 +240,6 @@ CREATE TABLE IF NOT EXISTS "oauth_token" (
 );
 CREATE INDEX IF NOT EXISTS oauth_token_family_id ON "oauth_token"(family_id);
 CREATE INDEX IF NOT EXISTS oauth_token_user_client ON "oauth_token"(user_id, client_id);
-CREATE TABLE IF NOT EXISTS "dpop_replay" (
-  id TEXT PRIMARY KEY,
-  jkt TEXT NOT NULL,
-  jti TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  UNIQUE (jkt, jti)
-);
-CREATE INDEX IF NOT EXISTS dpop_replay_expires_at ON "dpop_replay"(expires_at);
 CREATE TABLE IF NOT EXISTS "oauth_consent" (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
@@ -330,16 +322,8 @@ ALTER TABLE "oauth_code"
   ADD COLUMN dpop_jkt TEXT;
 ALTER TABLE "oauth_token"
   ADD COLUMN dpop_jkt TEXT;
-CREATE TABLE IF NOT EXISTS "dpop_replay" (
-  id TEXT PRIMARY KEY,
-  jkt TEXT NOT NULL,
-  jti TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  UNIQUE (jkt, jti)
-);
-CREATE INDEX IF NOT EXISTS dpop_replay_expires_at
-  ON "dpop_replay"(expires_at);
+CREATE UNIQUE INDEX IF NOT EXISTS verification_identifier_value_hash
+  ON "verification"(identifier, value_hash);
 """
 
 MIGRATIONS = {

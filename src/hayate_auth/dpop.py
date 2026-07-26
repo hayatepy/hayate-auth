@@ -177,9 +177,11 @@ class InMemoryDPoPReplayStore:
 class AdapterDPoPReplayStore:
     """Shared replay store backed by any hayate-auth Adapter.
 
-    The ``UNIQUE (jkt, jti)`` database constraint is the concurrency boundary.
-    If an insert fails, a confirming lookup distinguishes a concurrent replay
-    from an unavailable store; unavailable storage fails closed.
+    A namespaced row in the existing ``verification`` model stores a SHA-256
+    jti digest. Its ``UNIQUE (identifier, value_hash)`` database constraint is
+    the concurrency boundary. If an insert fails, a confirming lookup
+    distinguishes a concurrent replay from an unavailable store; unavailable
+    storage fails closed.
     """
 
     def __init__(
@@ -201,21 +203,23 @@ class AdapterDPoPReplayStore:
         if monotonic_now >= self._next_cleanup:
             async with self._cleanup_lock:
                 if monotonic_now >= self._next_cleanup:
-                    await self.adapter.delete("dpop_replay", [Where("expires_at", now, "lt")])
+                    await self.adapter.delete("verification", [Where("expires_at", now, "lt")])
                     self._next_cleanup = monotonic_now + self.cleanup_interval.total_seconds()
+        identifier = f"dpop:{jkt}"
+        jti_hash = hashlib.sha256(jti.encode("utf-8")).hexdigest()
         data = {
             "id": new_id(),
-            "jkt": jkt,
-            "jti": jti,
+            "identifier": identifier,
+            "value_hash": jti_hash,
             "expires_at": sessions.isoformat(expires_at),
             "created_at": now,
         }
         try:
-            await self.adapter.create("dpop_replay", data)
+            await self.adapter.create("verification", data)
         except Exception:
             duplicate = await self.adapter.find_one(
-                "dpop_replay",
-                [Where("jkt", jkt), Where("jti", jti)],
+                "verification",
+                [Where("identifier", identifier), Where("value_hash", jti_hash)],
             )
             if duplicate is not None:
                 return False
