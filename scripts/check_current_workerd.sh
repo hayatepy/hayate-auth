@@ -141,6 +141,10 @@ session = cookie_pair(header)
 
 status, enrollment, _ = request("/api/auth/two-factor/enable", {}, cookie=session)
 assert status == 200
+status, _, _ = request(
+    "/api/auth/two-factor/verify", {"code": "not-a-code"}, cookie=session
+)
+assert status == 400
 code = totp.code_at(enrollment["secret"], time.time())
 status, _, _ = request("/api/auth/two-factor/verify", {"code": code}, cookie=session)
 assert status == 200
