@@ -956,8 +956,28 @@ async def test_refresh_rotation_and_reuse_detection(auth_as):
     assert await auth_as.verify_oauth_token(rotated["access_token"]) is None
 
 
-async def test_concurrent_refresh_mints_exactly_one_replacement(auth_as):
+async def test_concurrent_refresh_mints_exactly_one_replacement(auth_as, monkeypatch):
     tokens, client, _cookie = await full_grant(auth_as, scope="mcp")
+
+    # Hold both requests after they read the same active token.  A plain
+    # gather() is scheduler-dependent: if the second request first observes
+    # the winner's in-progress state, it is correctly treated as reuse and
+    # burns the family (covered by the next test).
+    original_find_one = auth_as.adapter.find_one
+    both_read = asyncio.Event()
+    refresh_reads = 0
+
+    async def synchronized_find_one(model, where):
+        nonlocal refresh_reads
+        row = await original_find_one(model, where)
+        if model == "oauth_token" and any(item.field == "refresh_token_hash" for item in where):
+            refresh_reads += 1
+            if refresh_reads == 2:
+                both_read.set()
+            await both_read.wait()
+        return row
+
+    monkeypatch.setattr(auth_as.adapter, "find_one", synchronized_find_one)
 
     async def refresh():
         return await auth_as.fetch(
