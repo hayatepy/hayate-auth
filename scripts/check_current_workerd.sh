@@ -36,6 +36,10 @@ done
 
 cd "${test_dir}"
 npm ci --ignore-scripts
+if [[ "${MINIFLARE_LOOPBACK_PATCH:-0}" == "1" ]]; then
+  node "${repo_dir}/scripts/patch_miniflare_loopback.cjs" \
+    "${test_dir}/node_modules/miniflare/dist/src/index.js"
+fi
 "${repo_dir}/.venv/bin/python" -m hayate_auth generate --dialect d1 >schema.sql
 npx --no-install wrangler d1 execute AUTH_DB --local \
   --persist-to "${state_dir}" --file schema.sql >/dev/null

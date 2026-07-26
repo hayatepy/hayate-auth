@@ -26,3 +26,8 @@ Each client request opens a fresh inbound connection. A
 workerd-to-Node loopback used by the D1 binding, not from client keep-alive.
 Set `MINIFLARE_REPRO_ALLOW_FAILURE=1` for an A/B diagnostic job that should
 record rather than fail on the stock variant.
+
+On 2026-07-27, the hosted `ubuntu-24.04-arm` probe completed 40 stock and 40
+patched write/read pairs without a disconnect. This minimal workload therefore
+rules out D1 plus a five-second delay alone, but does not reproduce the
+intermittent full hayate-auth profile tracked in issue 28.
