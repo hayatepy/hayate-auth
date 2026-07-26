@@ -1,0 +1,36 @@
+name: Miniflare D1 diagnostic
+
+on:
+  push:
+    branches: [agent/miniflare-d1-diagnostics]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ab:
+    name: variant-${{ matrix.patched }}-${{ matrix.shard }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        patched: [0, 1]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: "3.13"
+      - run: uv sync --locked
+      - run: bash scripts/reproduce_miniflare_d1_disconnect.sh
+        env:
+          MINIFLARE_LOOPBACK_PATCH: ${{ matrix.patched }}
+          MINIFLARE_REPRO_ALLOW_FAILURE: "1"
+          MINIFLARE_REPRO_ATTEMPTS: "4"

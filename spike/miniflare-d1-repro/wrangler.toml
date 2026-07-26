@@ -1,0 +1,9 @@
+name = "miniflare-python-d1-repro"
+main = "entry.py"
+compatibility_date = "2026-07-01"
+compatibility_flags = ["python_workers", "disable_python_external_sdk"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "REPRO_DB"
+database_id = "miniflare-d1-repro-local"
