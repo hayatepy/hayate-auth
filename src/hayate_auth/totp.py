@@ -8,7 +8,6 @@ No self-built crypto: HOTP/TOTP are HMAC-SHA1 over a time counter
 from __future__ import annotations
 
 import base64
-import hashlib
 import hmac
 import secrets
 import struct
@@ -27,10 +26,7 @@ def generate_secret(length: int = 20) -> str:
 def _hotp(secret: str, counter: int) -> str:
     padded = secret + "=" * (-len(secret) % 8)
     key = base64.b32decode(padded, casefold=True)
-    # Use the callable form like the rest of the package. Pyodide/workerd can
-    # terminate its isolate while resolving the OpenSSL algorithm-name string,
-    # even though the same RFC 6238 SHA-1 implementation works via hashlib.
-    digest = hmac.new(key, struct.pack(">Q", counter), hashlib.sha1).digest()
+    digest = hmac.new(key, struct.pack(">Q", counter), "sha1").digest()
     offset = digest[-1] & 0x0F
     code = (int.from_bytes(digest[offset : offset + 4], "big") & 0x7FFFFFFF) % (10**DIGITS)
     return str(code).zfill(DIGITS)

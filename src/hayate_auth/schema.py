@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS "two_factor" (
   user_id TEXT NOT NULL UNIQUE REFERENCES "user"(id) ON DELETE CASCADE,
   secret TEXT NOT NULL,
   enabled INTEGER NOT NULL DEFAULT 0,
-  last_used_step INTEGER NOT NULL DEFAULT -1,
+  last_used_step INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -255,7 +255,7 @@ DIALECTS = {"sqlite": SQLITE_SCHEMA, "postgres": POSTGRES_SCHEMA, "d1": SQLITE_S
 
 TOTP_SINGLE_USE_MIGRATION = """\
 ALTER TABLE "two_factor"
-  ADD COLUMN last_used_step INTEGER NOT NULL DEFAULT -1;
+  ADD COLUMN last_used_step INTEGER NOT NULL DEFAULT 0;
 """
 
 MIGRATIONS = {

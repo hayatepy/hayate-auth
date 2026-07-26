@@ -58,7 +58,7 @@ async def enable(auth: Auth, request: Request) -> Response:
                 "user_id": user["id"],
                 "secret": secret,
                 "enabled": 0,
-                "last_used_step": -1,
+                "last_used_step": 0,
                 "created_at": stamp,
                 "updated_at": stamp,
             },
@@ -67,7 +67,7 @@ async def enable(auth: Auth, request: Request) -> Response:
         await auth.adapter.update(
             "two_factor",
             [Where("user_id", user["id"])],
-            {"secret": secret, "last_used_step": -1, "updated_at": stamp},
+            {"secret": secret, "last_used_step": 0, "updated_at": stamp},
         )
 
     return _json_response(
@@ -170,7 +170,9 @@ async def sign_in(auth: Auth, request: Request) -> Response:
     if row is None:
         return problem(401, title="Invalid code")
     step = totp.matching_step(row["secret"], code, at=time.time())
-    previous_step = int(row.get("last_used_step", -1))
+    # Step zero is a portable, non-negative "never used" sentinel. Real TOTP
+    # steps have been positive since 1970-01-01 00:00:30 UTC.
+    previous_step = int(row.get("last_used_step", 0))
     if step is None or step <= previous_step:
         return problem(401, title="Invalid code")
 

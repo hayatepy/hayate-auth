@@ -13,7 +13,7 @@ def test_generate_sqlite(capsys):
     out = capsys.readouterr().out
     assert 'CREATE TABLE IF NOT EXISTS "user"' in out
     assert 'CREATE TABLE IF NOT EXISTS "verification"' in out
-    assert "last_used_step INTEGER NOT NULL DEFAULT -1" in out
+    assert "last_used_step INTEGER NOT NULL DEFAULT 0" in out
 
 
 def test_generate_d1_matches_sqlite(capsys):
@@ -31,7 +31,7 @@ def test_unknown_dialect_errors():
 
 def test_upgrade_from_091_preserves_existing_two_factor(capsys):
     legacy_schema = SQLITE_SCHEMA.replace(
-        "  last_used_step INTEGER NOT NULL DEFAULT -1,\n",
+        "  last_used_step INTEGER NOT NULL DEFAULT 0,\n",
         "",
     )
     connection = sqlite3.connect(":memory:")
@@ -60,4 +60,4 @@ def test_upgrade_from_091_preserves_existing_two_factor(capsys):
     row = connection.execute(
         'SELECT enabled, last_used_step FROM "two_factor" WHERE id = ?', ("f1",)
     ).fetchone()
-    assert row == (1, -1)
+    assert row == (1, 0)
