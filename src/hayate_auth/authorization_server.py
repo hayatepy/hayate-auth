@@ -1013,21 +1013,6 @@ async def _grant_active(auth: Auth, *, user_id: str, client_id: str, grant_id: s
 # -- RFC 7009 revocation / RFC 7662 introspection --------------------------------------
 
 
-async def _read_oauth_form(request: Request) -> Any | None:
-    if (request.headers.get("content-type") or "").partition(";")[0].strip().lower() != (
-        "application/x-www-form-urlencoded"
-    ):
-        return None
-    try:
-        return await request.form_data()
-    except Exception:
-        return None
-
-
-def _invalid_oauth_form() -> Response:
-    return _oauth_error(400, "invalid_request", "body must be application/x-www-form-urlencoded")
-
-
 async def _find_token_row(
     auth: Auth, presented: str, hint: Any = None
 ) -> tuple[dict[str, Any], str] | None:
@@ -1047,9 +1032,18 @@ async def revoke_token(auth: Auth, request: Request) -> Response:
     """RFC 7009: idempotently invalidate a token and its complete family."""
     if auth.authorization_server is None:
         return problem(404, title="Not Found")
-    form = await _read_oauth_form(request)
-    if form is None:
-        return _invalid_oauth_form()
+    if (request.headers.get("content-type") or "").partition(";")[0].strip().lower() != (
+        "application/x-www-form-urlencoded"
+    ):
+        return _oauth_error(
+            400, "invalid_request", "body must be application/x-www-form-urlencoded"
+        )
+    try:
+        form = await request.form_data()
+    except Exception:
+        return _oauth_error(
+            400, "invalid_request", "body must be application/x-www-form-urlencoded"
+        )
     client = await _authenticate_client(auth, request, form)
     if isinstance(client, Response):
         return client
@@ -1140,9 +1134,18 @@ async def introspect_token(auth: Auth, request: Request) -> Response:
     config = auth.authorization_server
     if config is None or not config.resource_servers:
         return problem(404, title="Not Found")
-    form = await _read_oauth_form(request)
-    if form is None:
-        return _invalid_oauth_form()
+    if (request.headers.get("content-type") or "").partition(";")[0].strip().lower() != (
+        "application/x-www-form-urlencoded"
+    ):
+        return _oauth_error(
+            400, "invalid_request", "body must be application/x-www-form-urlencoded"
+        )
+    try:
+        form = await request.form_data()
+    except Exception:
+        return _oauth_error(
+            400, "invalid_request", "body must be application/x-www-form-urlencoded"
+        )
     resource_server = _authenticate_resource_server(config, request)
     if isinstance(resource_server, Response):
         return resource_server
