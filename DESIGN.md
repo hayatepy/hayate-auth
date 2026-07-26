@@ -217,7 +217,7 @@ class Adapter(Protocol):
 | POST `/sign-in/social` → GET `/callback/:provider` | OAuth(PKCE) | v0.3 |
 | POST `/two-factor/enable` / `/verify` / `/disable`・`/sign-in/two-factor` | TOTP 2FA | v0.4 |
 | POST `/api-key/create` / `/verify` / `/delete`・GET `/api-key/list` | API キー(better-auth 参考) | v0.5 |
-| GET `/oauth2/authorize`・POST `/oauth2/consent` / `/oauth2/token` / `/oauth2/register` | AS モード(§19) | v0.6 |
+| GET `/oauth2/authorize`・POST `/oauth2/consent` / `/oauth2/token` / `/oauth2/register` / `/oauth2/revoke` / `/oauth2/introspect`・GET `/oauth2/consents`・POST `/oauth2/consents/revoke` | AS モード(§19) | v0.6+ |
 | POST `/sign-in/magic-link` → GET `/magic-link/verify` | magic link(プラグイン、§20.1) | v0.7 |
 | POST `/passkey/generate-register-options` / `/verify-registration` / `/generate-authenticate-options` / `/verify-authentication`・GET `/passkey/list-user-passkeys`・POST `/passkey/delete-passkey` | passkey(`[passkey]` extra、§20.3) | v0.7 |
 
@@ -421,9 +421,15 @@ hayate-auth/
   トークンを**発行する側**が Python エコシステムに存在しない(Authlib は材料、Keycloak は別サーバー)。
 - hayate-auth はユーザー・セッション・consent の持ち主なので、AS の自然な置き場。
   `Auth.verify_oauth_token` を `hayate_mcp.Authorization(verify_token=...)` に注入すれば
-  RS と AS が同一プロセスで完結し、introspection も JWKS も要らない(§19.5)。
+  RS と AS が同一プロセスで完結する。分離 RS は認証済み introspection を使い、
+  JWT/JWKS と失効不能な bearer token を持ち込まずに同じ opaque token を検証できる。
 - MCP 2025-11-25 クライアントは **Client ID Metadata Documents を優先**し、未対応 AS
   には DCR でフォールバックする。どちらも事前登録の管理画面を不要にできる。
+- 2026-07-27 時点の
+  [better-auth OAuth Provider](https://better-auth.com/docs/plugins/oauth-provider)も
+  `/oauth2/revoke`・`/oauth2/introspect`・resource-specific claim を提供する。endpoint
+  surface と fail-closed introspection は参照しつつ、Hayate は Workers/D1 で即時失効できる
+  opaque token + grant 世代を維持し、分離 MCP のために JWT/JWKS を必須化しない。
 
 ### 19.2 規範とする標準
 
@@ -434,6 +440,8 @@ hayate-auth/
 | 動的クライアント登録 | RFC 7591(open registration) |
 | Client ID Metadata Documents | draft-ietf-oauth-client-id-metadata-document-00(MCP 2025-11-25 の SHOULD) |
 | Resource Indicators | RFC 8707(`resource` パラメータ、MCP 2025-06-18+ が要求) |
+| Token Revocation | RFC 7009(未知 token と成功を区別しない即時失効) |
+| Token Introspection | RFC 7662(機密 RS 認証、resource 制限、inactive privacy) |
 | セキュリティ BCP | RFC 9700(code 単回使用、refresh rotation + 再利用検知、exact redirect) |
 | loopback リダイレクト | RFC 8252 §7.3(ポート可変。MCP クライアントの実態) |
 
@@ -456,9 +464,9 @@ hayate-auth/
      `auth.register(app)` がこのルートを追加登録し、`Auth.fetch` が base_path 外で応答する。
 4. **スキーマ 4 テーブル追加**(所有モデル §4 に加える):
    `oauth_client`(client_secret_hash は public client で NULL)/
-   `oauth_code`(code_hash、code_challenge 必須、used フラグ + family_id)/
-   `oauth_token`(access/refresh 両ハッシュ、family_id、revoked)/
-   `oauth_consent`(user × client の許可 scope、UNIQUE)。
+   `oauth_code`(code_hash、code_challenge 必須、used フラグ + family_id + grant_id)/
+   `oauth_token`(access/refresh 両ハッシュ、family_id、grant_id、revoked)/
+   `oauth_consent`(user × client の許可 scope、versioned grant_id、revoked、UNIQUE)。
 5. **エンドポイント**(パスは better-auth の OIDC Provider に揃える):
 
    | メソッド / パス | 機能 |
@@ -466,14 +474,21 @@ hayate-auth/
    | GET `/.well-known/oauth-authorization-server`(ルート) | RFC 8414 メタデータ |
    | GET `{base}/oauth2/authorize` | 認可(セッション必須、302 三分岐) |
    | POST `{base}/oauth2/consent` | 同意の確定(セッション + CSRF) |
+   | GET `{base}/oauth2/consents` | 現在のユーザーが許可した client/scope 一覧 |
+   | POST `{base}/oauth2/consents/revoke` | 同意と関連 code/token の即時取消 |
    | POST `{base}/oauth2/token` | code / refresh_token グラント(form-encoded) |
+   | POST `{base}/oauth2/revoke` | RFC 7009 token-family 取消 |
+   | POST `{base}/oauth2/introspect` | RFC 7662 resource-bound introspection |
    | POST `{base}/oauth2/register` | DCR(認証なし = open) |
 
 6. **公開 API**: `AuthorizationServer`(設定 dataclass: issuer / login_url / consent_url /
-   scopes_supported / 各 TTL)を `Auth(authorization_server=...)` に渡す。
+   scopes_supported / 各 TTL / `OAuthResourceServer`)を
+   `Auth(authorization_server=...)` に渡す。
    検証は `Auth.verify_oauth_token(token, resource=None)`。`resource` を渡すと
    RFC 8707 の audience 制約を強制する(mcp 注入用には
    `auth.oauth_token_verifier(resource=...)` が束縛済み callable を返す)。
+   分離 RS は `OAuthIntrospectionVerifier` を
+   `hayate_mcp.Authorization(verify_token=...)` にそのまま渡す。
 7. **grant は authorization_code + refresh_token のみ**。response_type は `code` のみ。
 8. **Client ID Metadata Documents は注入 fetch**。
    `ClientIdMetadataDocuments(fetch, allow_url=...)` が有効なときだけ AS metadata に
@@ -501,6 +516,15 @@ hayate-auth/
   **DB には SHA-256 のみ**。client_secret の照合は `hmac.compare_digest`。
 - token / register エンドポイントは cookie 非依存なので CSRF 対象外(既存 csrf.py の
   非ブラウザ通過がそのまま正しい)。consent は cookie 依存なので既存 CSRF 検査が守る。
+- revocation は有効 client 認証後も未知/他 client の token と成功を同じ空の 200 にし、
+  対象 family に durable explicit-revocation marker を残す。refresh mint が insert 待ちでも
+  finalization が marker を検出し、取消後に有効 token を返せない。
+- introspection は `OAuthResourceServer` の独立した機密 credentialを HTTP Basic で検証し、
+  credential に束縛した exact resource の token だけを active とする。inactive 応答は
+  `{"active":false}` のみで、全応答を `no-store` にする。
+- consent 取消は consent の `grant_id` を先に世代更新し、code/tokenにも同じ世代を保存する。
+  code exchange / refresh rotation は token insert 後に世代を再確認するため、D1 の複数操作でも
+  取消と mint の全順序で生きた資格情報が残らない。
 - `resource` は authorize → code → token → 検証までキャリーし、`verify_oauth_token`
   の resource 指定と不一致なら None(混同トークンで別 RS を叩けない)。
   複数 `resource` パラメータは `invalid_target`(単一のみ対応 — documented subset)。
@@ -510,8 +534,7 @@ hayate-auth/
 | 却下案 | 理由 |
 |---|---|
 | JWT access token + JWKS | RS 同居では不要な鍵管理を持ち込む。失効不能。§6 と同じ判断 |
-| Token Introspection(RFC 7662) | 分離 RS の証拠が出てから。同居 RS は `verify_oauth_token` 直結で足りる |
-| Token Revocation(RFC 7009) | 同上(実装は小さいが、metadata に載せない限りクライアントは叩かない)。証拠駆動で後続 |
+| JWT introspection response(RFC 9701) | plain JSON + TLS + resource credentialで足りる。署名応答が必要な規制用途の証拠が出てから |
 | OIDC Provider(id_token / userinfo) | MCP の要件は OAuth AS。OIDC は署名鍵(RS256)が必須になり stdlib 制約(§17-2)に反する |
 | consent 画面の内蔵 | hosted UI を持たない方針(§15)。better-auth も画面はアプリ委譲 |
 | client_credentials グラント | ユーザー不在のトークンは MCP の主要ユースに無い。証拠駆動 |

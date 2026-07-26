@@ -20,11 +20,21 @@ from hayate import Context, Hayate
 from hayate_mcp import Authorization, McpMount
 from mcp.server.lowlevel import Server
 
-from hayate_auth import Auth, AuthorizationServer
+from hayate_auth import (
+    Auth,
+    AuthorizationServer,
+    OAuthIntrospectionVerifier,
+    OAuthResourceServer,
+)
 from hayate_auth.adapters.sqlite import SQLiteAdapter
 
 ISSUER = os.environ.get("ISSUER", "http://127.0.0.1:8931")
 RESOURCE = f"{ISSUER}/mcp"
+INTROSPECTION_CLIENT_ID = os.environ.get("INTROSPECTION_CLIENT_ID", "mcp-resource-server")
+INTROSPECTION_CLIENT_SECRET = os.environ.get(
+    "INTROSPECTION_CLIENT_SECRET",
+    "dev-introspection-secret-change-me",
+)
 
 adapter = SQLiteAdapter(os.environ.get("AUTH_DB", ":memory:"))
 adapter.create_tables()
@@ -38,7 +48,24 @@ auth = Auth(
         consent_url="/consent",
         scopes_supported=("mcp",),
         resource=RESOURCE,
+        resource_servers=(
+            OAuthResourceServer(
+                client_id=INTROSPECTION_CLIENT_ID,
+                client_secret=INTROSPECTION_CLIENT_SECRET,
+                resource=RESOURCE,
+            ),
+        ),
     ),
+)
+verify_token = (
+    OAuthIntrospectionVerifier(
+        endpoint=f"{ISSUER}/api/auth/oauth2/introspect",
+        client_id=INTROSPECTION_CLIENT_ID,
+        client_secret=INTROSPECTION_CLIENT_SECRET,
+        resource=RESOURCE,
+    )
+    if os.environ.get("VERIFY_MODE") == "introspection"
+    else auth.oauth_token_verifier(resource=RESOURCE)
 )
 
 server = Server("hayate-oauth-demo")
@@ -73,7 +100,7 @@ McpMount(
     authorization=Authorization(
         resource=RESOURCE,
         authorization_servers=[ISSUER],
-        verify_token=auth.oauth_token_verifier(resource=RESOURCE),
+        verify_token=verify_token,
         scopes_supported=["mcp"],
     ),
 ).register(app)
