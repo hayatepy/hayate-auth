@@ -1,5 +1,9 @@
 # hayate-auth
 
+> **Hayate ecosystem:** [Start here](https://github.com/hayatepy/.github/blob/main/docs/START.md)
+> · [Production golden app](https://github.com/hayatepy/golden-app)
+> · [Tested compatibility](https://github.com/hayatepy/.github/blob/main/docs/COMPATIBILITY.md)
+
 Standards-first authentication for [hayate](https://github.com/hayatepy/hayate) —
 a mountable, better-auth-style auth handler built on the WHATWG Request/Response
 model.
