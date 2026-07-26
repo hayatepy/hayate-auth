@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import secrets
 import struct
+import sys
 import time
 from urllib.parse import quote
 
@@ -26,11 +27,20 @@ def generate_secret(length: int = 20) -> str:
 
 def _hotp(secret: str, counter: int) -> str:
     padded = secret + "=" * (-len(secret) % 8)
+    if sys.platform == "emscripten":
+        print("hayate-auth TOTP trace: base32", flush=True)
     key = base64.b32decode(padded, casefold=True)
+    if sys.platform == "emscripten":
+        print("hayate-auth TOTP trace: counter", flush=True)
+    packed_counter = struct.pack(">Q", counter)
     # Use the callable form like the rest of the package. Pyodide/workerd can
     # terminate its isolate while resolving the OpenSSL algorithm-name string,
     # even though the same RFC 6238 SHA-1 implementation works via hashlib.
-    digest = hmac.new(key, struct.pack(">Q", counter), hashlib.sha1).digest()
+    if sys.platform == "emscripten":
+        print("hayate-auth TOTP trace: hmac", flush=True)
+    digest = hmac.new(key, packed_counter, hashlib.sha1).digest()
+    if sys.platform == "emscripten":
+        print("hayate-auth TOTP trace: truncate", flush=True)
     offset = digest[-1] & 0x0F
     code = (int.from_bytes(digest[offset : offset + 4], "big") & 0x7FFFFFFF) % (10**DIGITS)
     return str(code).zfill(DIGITS)
@@ -56,7 +66,10 @@ def matching_step(
     matched: int | None = None
     for step in range(-window, window + 1):
         candidate = counter + step
-        if hmac.compare_digest(_hotp(secret, candidate), code):
+        candidate_code = _hotp(secret, candidate)
+        if sys.platform == "emscripten":
+            print("hayate-auth TOTP trace: compare", flush=True)
+        if hmac.compare_digest(candidate_code, code):
             matched = candidate
     return matched
 
