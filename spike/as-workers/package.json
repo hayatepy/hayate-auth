@@ -1,0 +1,10 @@
+{
+  "name": "hayate-auth-as-workers-audit",
+  "private": true,
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "devDependencies": {
+    "wrangler": "4.114.0"
+  }
+}

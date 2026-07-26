@@ -1,0 +1,87 @@
+{
+  "files": {
+    ".github/workflows/security-audit.yml": {
+      "bytes": 3150,
+      "sha256": "4583f0cccdb7eeef7a60ef82936d473bfec8f3e40f37a33d82717e32c046cf87"
+    },
+    "README.md": {
+      "bytes": 9613,
+      "sha256": "70f9fabf66fa26416f930f1aa0e927571e0ad28da682178b69b604ab40460b05"
+    },
+    "SECURITY.md": {
+      "bytes": 2621,
+      "sha256": "8bea280b50e51e6e94a08ecd91dc1bba6a7be4e9a9c3b2ce19e4cb9ca44f1fe5"
+    },
+    "audit/PROCEDURES.md": {
+      "bytes": 3008,
+      "sha256": "25cc49742d7b62981739e6cc614288298aad0f11100aa73eb21fb5cb8897eed0"
+    },
+    "audit/README.md": {
+      "bytes": 2178,
+      "sha256": "c677562d03b05e6076c0f2e3f77f0ef21804ce6a2fa0a198327d179645366551"
+    },
+    "audit/RFP.md": {
+      "bytes": 3098,
+      "sha256": "2e2526b26dba6a537131da6353a5fe1af2e269665b54040dff4c43f4ff126cad"
+    },
+    "audit/THREAT_MODEL.md": {
+      "bytes": 6038,
+      "sha256": "48ce434f8b6c75e3a7d555765c67dbecdb246a0ff62972f6e205dd52094a874f"
+    },
+    "audit/maintainer-signing-key.asc": {
+      "bytes": 2712,
+      "sha256": "23125e12a3a1d08a8e32fc88957def17cb6474a88fd6e29da6ba52c679d14884"
+    },
+    "audit/target.toml": {
+      "bytes": 3352,
+      "sha256": "ae0821d0732e3f3841aa9007fe4b7fc40864f5ab0c169ddcc8963f425bd1d80d"
+    },
+    "docs/asvs.md": {
+      "bytes": 10066,
+      "sha256": "a0157cc1c09813c48b3d9487ca629053879f1c8f3a7cada334f6d69389b8e442"
+    },
+    "scripts/check_audit_pack.py": {
+      "bytes": 7548,
+      "sha256": "c6830e529bdff5bb23d7bda3f54fa13c13a329234d48882f06ea593ea0510cc4"
+    },
+    "scripts/check_audit_workerd.sh": {
+      "bytes": 3834,
+      "sha256": "a0e0593f3410e7c7f39638cb660dfad618b98f344157170cf0e577a50cbfc027"
+    },
+    "spike/as-workers/entry.py": {
+      "bytes": 5233,
+      "sha256": "06eb92cdd2ce9107cbacadd4787ae939fe0726f5b7f806fd25407fa63bf39585"
+    },
+    "spike/as-workers/package-lock.json": {
+      "bytes": 50080,
+      "sha256": "1e93a94da3164e2b5bf7d005657e32ceac259cf9170168886baea3e110b88e6f"
+    },
+    "spike/as-workers/package.json": {
+      "bytes": 161,
+      "sha256": "89b0030a519720369be7314587535242d03e20363b102f74621e92103d924df2"
+    },
+    "spike/as-workers/pylock.toml": {
+      "bytes": 4133,
+      "sha256": "75ec1e8978e9611d27c377e16cb82819dd82ffe3cdd9cdf54b9177b5c0a24125"
+    },
+    "spike/as-workers/pyproject.toml": {
+      "bytes": 279,
+      "sha256": "06c99ab72d5311deafb2b1f946b4ed55a117851c3d11d76db8233e43bb644617"
+    },
+    "spike/as-workers/uv.lock": {
+      "bytes": 72953,
+      "sha256": "b1914861310b06f4aeb0cf86c903a2bf4833c73c9543742ee913388b19857d04"
+    },
+    "spike/as-workers/wrangler.toml": {
+      "bytes": 213,
+      "sha256": "f32d38b60090558f522d33f95499a2cd031de87cc3ea7cfe93e5537dfdaf4d0a"
+    }
+  },
+  "schema": 1,
+  "target": {
+    "commit": "b8486cf40cfa227b44062ee41bddb4a6b74132fa",
+    "name": "hayate-auth",
+    "tag": "v0.9.1",
+    "version": "0.9.1"
+  }
+}

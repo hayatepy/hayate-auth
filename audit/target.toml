@@ -1,0 +1,83 @@
+[target]
+name = "hayate-auth"
+version = "0.9.1"
+tag = "v0.9.1"
+commit = "b8486cf40cfa227b44062ee41bddb4a6b74132fa"
+release = "https://github.com/hayatepy/hayate-auth/releases/tag/v0.9.1"
+primary_signing_key_fingerprint = "B22B98ABB2D503307AB6A3160718EFA6506BB669"
+tag_signing_subkey_fingerprint = "0C153FFE2B0274365ACB1BF1AEFA86FA828C52C5"
+
+[artifacts.wheel]
+filename = "hayate_auth-0.9.1-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/0f/55/eee563bddea94115747c632b273017e1caa7db8922fa90824799de9d23a9/hayate_auth-0.9.1-py3-none-any.whl"
+sha256 = "8c687172afb367d58d795008ffe0e661cc5aac2a12c1691c0637be0eb15a9925"
+
+[artifacts.sdist]
+filename = "hayate_auth-0.9.1.tar.gz"
+url = "https://files.pythonhosted.org/packages/15/ae/433dffe8e084e56e244ea3c7fa17a055780b5b53c94877107fefe6663579/hayate_auth-0.9.1.tar.gz"
+sha256 = "c48bb7449663a04f278d6fddb052b25d47cacbccc53b5534c97330d72e86b5d4"
+
+[standards.asvs]
+version = "5.0.0"
+url = "https://github.com/OWASP/ASVS/releases/download/v5.0.0_release/OWASP_Application_Security_Verification_Standard_5.0.0_en.csv"
+sha256 = "6124dba176dc563f66363a11ae0c47f9b86b8a4a84c66a793670bd196ed86cd5"
+
+[ledger]
+covered = 46
+external = 2
+gap = 2
+
+[scope]
+immutable_paths = ["src", "tests", "pyproject.toml"]
+manifest_files = [
+  "audit/README.md",
+  "audit/PROCEDURES.md",
+  "audit/RFP.md",
+  "audit/THREAT_MODEL.md",
+  "audit/maintainer-signing-key.asc",
+  "audit/target.toml",
+  "docs/asvs.md",
+  "README.md",
+  "SECURITY.md",
+  "scripts/check_audit_pack.py",
+  "scripts/check_audit_workerd.sh",
+  "spike/as-workers/entry.py",
+  "spike/as-workers/package-lock.json",
+  "spike/as-workers/package.json",
+  "spike/as-workers/pylock.toml",
+  "spike/as-workers/pyproject.toml",
+  "spike/as-workers/uv.lock",
+  "spike/as-workers/wrangler.toml",
+  ".github/workflows/security-audit.yml",
+]
+evidence_paths = [
+  "src/hayate_auth/crypto/__init__.py",
+  "src/hayate_auth/adapters/d1.py",
+  "src/hayate_auth/adapters/sqlite.py",
+  "tests/test_attacks.py",
+  "tests/test_authorization_server.py",
+  "tests/test_csrf.py",
+  "tests/test_email_flow.py",
+  "tests/test_magic_link.py",
+  "tests/test_oauth.py",
+  "tests/test_passkey.py",
+  "tests/test_totp.py",
+  "tests/test_verification.py",
+]
+test_nodes = [
+  "tests/test_attacks.py::test_sign_in_rotates_the_session_token",
+  "tests/test_attacks.py::test_revoked_token_cannot_be_replayed",
+  "tests/test_attacks.py::test_unknown_user_still_burns_a_kdf",
+  "tests/test_attacks.py::test_database_never_stores_the_raw_token",
+  "tests/test_authorization_server.py::test_code_replay_revokes_the_tokens_it_issued",
+  "tests/test_authorization_server.py::test_concurrent_code_exchange_mints_exactly_one_token_family",
+  "tests/test_authorization_server.py::test_refresh_rotation_and_reuse_detection",
+  "tests/test_authorization_server.py::test_token_resource_must_match_the_code",
+  "tests/test_csrf.py::test_cross_origin_post_is_403",
+  "tests/test_email_flow.py::test_wrong_password_and_unknown_user_are_identical_401s",
+  "tests/test_magic_link.py::test_token_is_single_use",
+  "tests/test_oauth.py::test_unverified_email_does_not_hijack_existing_user",
+  "tests/test_passkey.py::test_sign_counter_rollback_is_rejected",
+  "tests/test_totp.py::test_password_alone_never_yields_a_session_with_2fa",
+  "tests/test_verification.py::test_reset_revokes_every_session",
+]

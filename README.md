@@ -214,9 +214,16 @@ auth = Auth(
   `__Host-`-prefixed HttpOnly SameSite=Lax cookies on HTTPS.
 - CSRF: SameSite + Origin (RFC 6454) + Fetch Metadata — no token embedding.
 - Sign-in failures are uniform in body and KDF timing (enumeration defense).
-- Coverage ledger: [docs/asvs.md](docs/asvs.md) (OWASP ASVS V6/V7, ratcheted).
+- Coverage ledger: [docs/asvs.md](docs/asvs.md) (selected OWASP ASVS 5.0.0
+  controls, exact IDs and explicit gaps; not a certification).
+- Independent review pack: [audit/README.md](audit/README.md) freezes v0.9.1,
+  release hashes, threat model, SQLite/ASGI + PostgreSQL DDL + workerd/D1
+  profiles, and a reviewer RFP. The audit has not yet been commissioned.
 - **You must rate-limit** `/api/auth/*` (hayate middleware or your
   infrastructure): brute-force throttling is deliberately out of core.
+- TOTP seeds and upstream provider access/refresh tokens are stored
+  recoverably. Production databases and backups must be access-controlled and
+  encrypted; see [SECURITY.md](SECURITY.md) for known limitations.
 - Authorization-server adapters must implement atomic `update_many()` and
   return the affected-row count. This prevents concurrent authorization-code
   or refresh-token redemption from minting multiple token families. Durable
