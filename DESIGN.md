@@ -213,6 +213,7 @@ class Adapter(Protocol):
 | POST `/sign-out` | セッション失効 | v0.1 |
 | GET `/get-session` | 現在のセッション + user | v0.1 |
 | POST `/forget-password` / `/reset-password` | リセットフロー | v0.2 |
+| POST `/change-password` | 現在のパスワード再検証 + 任意の他セッション失効 | v0.10 |
 | GET `/verify-email` | メール検証 | v0.2 |
 | POST `/sign-in/social` → GET `/callback/:provider` | OAuth(PKCE) | v0.3 |
 | POST `/two-factor/enable` / `/verify` / `/disable`・`/sign-in/two-factor` | TOTP 2FA | v0.4 |
@@ -264,6 +265,13 @@ class CryptoBackend(Protocol):
     (research/kdf.md 本番実測 5)。
 - 保存形式は PHC string format(`$scrypt$…`)。アルゴリズム識別子付きなので
   バックエンド混在でも verify 先を選べる(相互運用の残課題は §17-3)。
+- sign-up / reset / authenticated change は同じ `PasswordPolicy` を通す。長さ、
+  NFKC + case-fold 済みのコンパクトなローカル blocklist、注入可能な async
+  breach checker の順に評価する。サービス固有値や完全な侵害 corpus は
+  アプリケーションが注入し、既定動作はネットワーク通信を行わない。
+- breach checker は一度だけ呼び、既定 2 秒で打ち切る。例外、timeout、不正な
+  戻り値は既定で fail closed の 503 とし、credential や reset token を変更しない。
+  可用性を優先する fail open は `checker_failure="allow"` の明示指定時だけ許可する。
 - **却下**: argon2-cffi 必須 — C 拡張で Workers 不可、ゼロ依存崩壊。`[argon2]` extra の余地は残す。
 - **鉄則: 暗号プリミティブを自作しない**。stdlib / WebCrypto / 審査済みライブラリのみ。
 

@@ -14,6 +14,7 @@ from . import session as sessions
 from .adapter import Adapter, Where
 from .authorization_server import WELL_KNOWN_PATH
 from .crypto import CryptoBackend, default_backend
+from .password import PasswordPolicy
 from .principal import bearer_middleware
 from .routes import ROUTES, public_user
 
@@ -31,6 +32,7 @@ class Auth:
         verification_ttl: timedelta = timedelta(hours=1),
         send_reset_password: Any | None = None,
         send_verification_email: Any | None = None,
+        password_policy: PasswordPolicy | None = None,
         providers: list[Any] | tuple[Any, ...] = (),
         http_backend: Any | None = None,
         totp_issuer: str = "hayate-auth",
@@ -54,6 +56,7 @@ class Auth:
         # and checks tokens (DESIGN §10).
         self.send_reset_password = send_reset_password
         self.send_verification_email = send_verification_email
+        self.password_policy = password_policy if password_policy is not None else PasswordPolicy()
         # OAuth (v0.3): registered providers by id, and the hayate-fetch
         # backend override (tests inject a fake; None = runtime default).
         self.providers = {provider.id: provider for provider in providers}

@@ -16,23 +16,33 @@ from .introspection import OAuthIntrospectionVerifier
 from .lazy import LazyAuth
 from .oauth import OAuthProvider, github, google
 from .passkey import PasskeyConfig
+from .password import (
+    COMMON_PASSWORDS,
+    CompromisedPasswordChecker,
+    PasswordPolicy,
+    PasswordPolicyUnavailable,
+)
 from .plugin import AuthPlugin
 from .principal import Principal
 
 __version__ = "0.9.1"
 
 __all__ = [
+    "COMMON_PASSWORDS",
     "Adapter",
     "Auth",
     "AuthPlugin",
     "AuthorizationServer",
     "ClientIdMetadataDocuments",
+    "CompromisedPasswordChecker",
     "CryptoBackend",
     "LazyAuth",
     "OAuthIntrospectionVerifier",
     "OAuthProvider",
     "OAuthResourceServer",
     "PasskeyConfig",
+    "PasswordPolicy",
+    "PasswordPolicyUnavailable",
     "Pbkdf2Backend",
     "Principal",
     "ScryptBackend",
