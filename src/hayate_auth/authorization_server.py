@@ -151,6 +151,8 @@ class AuthorizationServer:
 
 
 def _hash(value: str) -> str:
+    """Digest server-generated, high-entropy OAuth credentials for lookup."""
+    # codeql[py/weak-sensitive-data-hashing]
     return hashlib.sha256(value.encode()).hexdigest()
 
 
