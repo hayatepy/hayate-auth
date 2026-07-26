@@ -85,47 +85,42 @@ async def protected(c: Context):
 
 
 def build_server():
-    # mcp is imported lazily: its jsonschema/rpds chain seeds entropy at
-    # import, which workerd forbids at Worker global scope (hayate-mcp
-    # examples/workers pins this pattern).
-    import mcp.types as types
-    from mcp.server.lowlevel import Server
+    # Workers use hayate-mcp's SDK-independent runtime: the official SDK's
+    # Pydantic dependency has no supported Pyodide wheel. ASGI continues to
+    # use McpMount + the official SDK; this edge profile verifies the same
+    # 2025-11-25 wire protocol through WorkerMcpMount.
+    from hayate_mcp import WorkerMcpServer
 
-    server = Server("hayate-as-workers")
+    server = WorkerMcpServer("hayate-as-workers", version="0.9.1")
 
-    @server.list_tools()
-    async def list_tools() -> list[types.Tool]:
-        return [
-            types.Tool(
-                name="echo",
-                description="Echo the input back (OAuth-protected, on workerd).",
-                inputSchema={
-                    "type": "object",
-                    "properties": {"text": {"type": "string"}},
-                    "required": ["text"],
-                },
-            )
-        ]
-
-    @server.call_tool()
-    async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
-        return [types.TextContent(type="text", text=f"echo: {arguments['text']}")]
+    @server.tool(
+        name="echo",
+        description="Echo the input back (OAuth-protected, on workerd).",
+        input_schema={
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+            "additionalProperties": False,
+        },
+        execution={"taskSupport": "forbidden"},
+    )
+    async def echo(arguments: dict) -> str:
+        return f"echo: {arguments['text']}"
 
     return server
 
 
 def get_mount():
-    from hayate_mcp import Authorization, McpMount
+    from hayate_mcp import Authorization, WorkerMcpMount
 
     mount = getattr(app, "_mcp_mount", None)
     if mount is None:
         auth = get_auth()
         issuer = auth.authorization_server.issuer
         resource = f"{issuer}/mcp"
-        mount = McpMount(
+        mount = WorkerMcpMount(
             build_server(),
             path="/mcp",
-            stateless=True,
             authorization=Authorization(
                 resource=resource,
                 authorization_servers=[issuer],
