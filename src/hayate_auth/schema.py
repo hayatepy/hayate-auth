@@ -31,7 +31,15 @@ MODELS: dict[str, tuple[str, ...]] = {
         "updated_at",
     ),
     "verification": ("id", "identifier", "value_hash", "expires_at", "created_at"),
-    "two_factor": ("id", "user_id", "secret", "enabled", "created_at", "updated_at"),
+    "two_factor": (
+        "id",
+        "user_id",
+        "secret",
+        "enabled",
+        "last_used_step",
+        "created_at",
+        "updated_at",
+    ),
     "api_key": (
         "id",
         "user_id",
@@ -154,6 +162,7 @@ CREATE TABLE IF NOT EXISTS "two_factor" (
   user_id TEXT NOT NULL UNIQUE REFERENCES "user"(id) ON DELETE CASCADE,
   secret TEXT NOT NULL,
   enabled INTEGER NOT NULL DEFAULT 0,
+  last_used_step INTEGER NOT NULL DEFAULT -1,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -243,3 +252,16 @@ CREATE INDEX IF NOT EXISTS passkey_user_id ON "passkey"(user_id);
 POSTGRES_SCHEMA = SQLITE_SCHEMA
 
 DIALECTS = {"sqlite": SQLITE_SCHEMA, "postgres": POSTGRES_SCHEMA, "d1": SQLITE_SCHEMA}
+
+TOTP_SINGLE_USE_MIGRATION = """\
+ALTER TABLE "two_factor"
+  ADD COLUMN last_used_step INTEGER NOT NULL DEFAULT -1;
+"""
+
+MIGRATIONS = {
+    "0.9.1": {
+        "sqlite": TOTP_SINGLE_USE_MIGRATION,
+        "postgres": TOTP_SINGLE_USE_MIGRATION,
+        "d1": TOTP_SINGLE_USE_MIGRATION,
+    }
+}

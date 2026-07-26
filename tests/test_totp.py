@@ -1,5 +1,6 @@
 """TOTP two-factor: primitives, enrollment, and two-step sign-in."""
 
+import asyncio
 import time
 
 from conftest import cookie_pair, request_json
@@ -35,6 +36,13 @@ def test_verify_accepts_current_and_adjacent_windows():
     assert not totp.verify(secret, totp.code_at(secret, now + 120), at=now)
 
 
+def test_matching_step_identifies_the_persisted_replay_boundary():
+    secret = totp.generate_secret()
+    now = 1_000_000_000
+    expected = int(now // totp.PERIOD) + 1
+    assert totp.matching_step(secret, totp.code_at(secret, now + 30), at=now) == expected
+
+
 def test_verify_rejects_garbage():
     secret = totp.generate_secret()
     assert not totp.verify(secret, "")
@@ -55,13 +63,19 @@ async def _signup(auth, email="t@example.com") -> str:
     return cookie_pair(res)
 
 
-async def _enroll(auth, cookie) -> str:
+async def _enroll(auth, cookie, *, moment: float | None = None) -> str:
     res = await auth.fetch(request_json(ENABLE, {}, cookie=cookie))
     secret = (await res.json())["secret"]
-    code = totp.code_at(secret, time.time())
+    code = totp.code_at(secret, time.time() if moment is None else moment)
     confirmed = await auth.fetch(request_json(VERIFY, {"code": code}, cookie=cookie))
     assert confirmed.status == 200
     return secret
+
+
+async def _challenge(auth, email: str) -> str:
+    first = await auth.fetch(request_json(SIGNIN, {"email": email, "password": "long enough"}))
+    assert first.status == 200
+    return cookie_pair(first)
 
 
 async def test_enable_returns_secret_and_uri(auth):
@@ -136,6 +150,55 @@ async def test_password_alone_never_yields_a_session_with_2fa(auth):
     challenge = cookie_pair(first)
     who = await auth.fetch(request_json(SESSION, method="GET", cookie=challenge))
     assert await who.json() == {"session": None, "user": None}
+
+
+async def test_totp_step_is_single_use_and_state_never_rolls_back(auth, monkeypatch):
+    clock = [1_800_000_000.0]
+    monkeypatch.setattr("hayate_auth.two_factor.time.time", lambda: clock[0])
+    cookie = await _signup(auth, "single@example.com")
+    secret = await _enroll(auth, cookie, moment=clock[0])
+    challenge = await _challenge(auth, "single@example.com")
+    first_code = totp.code_at(secret, clock[0])
+
+    first = await auth.fetch(
+        request_json(TWO_FACTOR_SIGNIN, {"code": first_code}, cookie=challenge)
+    )
+    replay = await auth.fetch(
+        request_json(TWO_FACTOR_SIGNIN, {"code": first_code}, cookie=challenge)
+    )
+    assert first.status == 200
+    assert replay.status == 401
+
+    clock[0] += totp.PERIOD
+    next_challenge = await _challenge(auth, "single@example.com")
+    next_code = totp.code_at(secret, clock[0])
+    newer = await auth.fetch(
+        request_json(TWO_FACTOR_SIGNIN, {"code": next_code}, cookie=next_challenge)
+    )
+    assert newer.status == 200
+
+    # The previous code remains inside the accepted -1 clock-skew window, but
+    # its persisted step cannot be replayed or move the factor state backward.
+    old_challenge = await _challenge(auth, "single@example.com")
+    older = await auth.fetch(
+        request_json(TWO_FACTOR_SIGNIN, {"code": first_code}, cookie=old_challenge)
+    )
+    assert older.status == 401
+
+
+async def test_concurrent_totp_redemption_has_exactly_one_winner(auth, monkeypatch):
+    moment = 1_800_000_000.0
+    monkeypatch.setattr("hayate_auth.two_factor.time.time", lambda: moment)
+    cookie = await _signup(auth, "race@example.com")
+    secret = await _enroll(auth, cookie, moment=moment)
+    challenge = await _challenge(auth, "race@example.com")
+    code = totp.code_at(secret, moment)
+
+    first, second = await asyncio.gather(
+        auth.fetch(request_json(TWO_FACTOR_SIGNIN, {"code": code}, cookie=challenge)),
+        auth.fetch(request_json(TWO_FACTOR_SIGNIN, {"code": code}, cookie=challenge)),
+    )
+    assert sorted((first.status, second.status)) == [200, 401]
 
 
 async def test_disable_turns_sign_in_back_to_one_step(auth):

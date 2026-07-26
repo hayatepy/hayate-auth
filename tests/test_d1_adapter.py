@@ -2,9 +2,12 @@
 backed by a real sqlite3 database — the SQL itself is exercised for real."""
 
 import sqlite3
+import time
 
 import pytest
 
+from conftest import cookie_pair, request_json
+from hayate_auth import Auth, ScryptBackend, totp
 from hayate_auth.adapter import Where
 from hayate_auth.adapters.d1 import D1Adapter
 from hayate_auth.schema import SQLITE_SCHEMA
@@ -103,3 +106,39 @@ async def test_operators_sort_limit(adapter):
 async def test_identifier_validation_still_applies(adapter):
     with pytest.raises(ValueError):
         await adapter.create("user", {"evil": 1})
+
+
+async def test_d1_totp_step_redemption_is_atomic_and_single_use(adapter):
+    auth = Auth(secret="test-secret", adapter=adapter, crypto=ScryptBackend(log_n=12))
+    signup = await auth.fetch(
+        request_json(
+            "/api/auth/sign-up/email",
+            {"email": "d1-2fa@example.com", "password": "long enough"},
+        )
+    )
+    session_cookie = cookie_pair(signup)
+    enrollment = await auth.fetch(
+        request_json("/api/auth/two-factor/enable", {}, cookie=session_cookie)
+    )
+    secret = (await enrollment.json())["secret"]
+    code = totp.code_at(secret, time.time())
+    verified = await auth.fetch(
+        request_json("/api/auth/two-factor/verify", {"code": code}, cookie=session_cookie)
+    )
+    assert verified.status == 200
+
+    password = await auth.fetch(
+        request_json(
+            "/api/auth/sign-in/email",
+            {"email": "d1-2fa@example.com", "password": "long enough"},
+        )
+    )
+    challenge = cookie_pair(password)
+    first = await auth.fetch(
+        request_json("/api/auth/sign-in/two-factor", {"code": code}, cookie=challenge)
+    )
+    replay = await auth.fetch(
+        request_json("/api/auth/sign-in/two-factor", {"code": code}, cookie=challenge)
+    )
+    assert first.status == 200
+    assert replay.status == 401

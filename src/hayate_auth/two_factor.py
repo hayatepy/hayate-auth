@@ -58,13 +58,16 @@ async def enable(auth: Auth, request: Request) -> Response:
                 "user_id": user["id"],
                 "secret": secret,
                 "enabled": 0,
+                "last_used_step": -1,
                 "created_at": stamp,
                 "updated_at": stamp,
             },
         )
     else:
         await auth.adapter.update(
-            "two_factor", [Where("user_id", user["id"])], {"secret": secret, "updated_at": stamp}
+            "two_factor",
+            [Where("user_id", user["id"])],
+            {"secret": secret, "last_used_step": -1, "updated_at": stamp},
         )
 
     return _json_response(
@@ -164,7 +167,29 @@ async def sign_in(auth: Auth, request: Request) -> Response:
         return problem(400, title="Invalid or expired two-factor challenge")
 
     row = await enabled_row(auth, stored["user_id"])
-    if row is None or not totp.verify(row["secret"], code):
+    if row is None:
+        return problem(401, title="Invalid code")
+    step = totp.matching_step(row["secret"], code, at=time.time())
+    previous_step = int(row.get("last_used_step", -1))
+    if step is None or step <= previous_step:
+        return problem(401, title="Invalid code")
+
+    # The persisted step is the cross-process replay boundary. Compare against
+    # the value we read and move only forward in one guarded update: concurrent
+    # requests for one code therefore have exactly one winner on SQLite or D1.
+    claimed = await auth.adapter.update_many(
+        "two_factor",
+        [
+            Where("id", row["id"]),
+            Where("enabled", 1),
+            Where("last_used_step", previous_step),
+        ],
+        {
+            "last_used_step": step,
+            "updated_at": sessions.isoformat(sessions.now()),
+        },
+    )
+    if claimed != 1:
         return problem(401, title="Invalid code")
 
     user_row = await auth.adapter.find_one("user", [Where("id", stored["user_id"])])
