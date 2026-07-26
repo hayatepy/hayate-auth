@@ -8,6 +8,7 @@ log_file="${test_dir}.log"
 # Keep the D1 persistence directory outside the watched Worker source tree;
 # otherwise every SQLite write triggers a Wrangler source reload.
 state_dir="$(mktemp -d)"
+tooling_dir="$(mktemp -d)"
 port=8792
 server_pid=""
 
@@ -39,15 +40,29 @@ npm ci --ignore-scripts
 npx --no-install wrangler d1 execute AUTH_DB --local \
   --persist-to "${state_dir}" --file schema.sql >/dev/null
 
-uvx --from workers-py==1.15.0 pywrangler sync
+# Install the locked wasm wheels directly into the only directory Wrangler
+# should bundle. Pywrangler also creates host tooling virtualenvs beside the
+# Worker, which Wrangler recursively discovers and would ship.
 uv pip install \
+  --python "${repo_dir}/.venv" \
+  --python-platform wasm32-pyodide2025 \
+  --python-version 3.13 \
   --target python_modules \
-  --reinstall \
+  --no-build \
+  --preview-features pylock \
+  -r pylock.toml
+uv pip install \
+  --target "${tooling_dir}/current-wheel" \
   --no-deps \
   "${wheel_path}"
+mv python_modules/hayate_auth "${tooling_dir}/released-hayate-auth"
+mv "${tooling_dir}/current-wheel/hayate_auth" python_modules/hayate_auth
+test -e python_modules/hayate
 test -e python_modules/hayate_auth
+test -e python_modules/hayate_fetch
+test -e python_modules/hayate_mcp
 
-uvx --from workers-py==1.15.0 pywrangler dev \
+npx --no-install wrangler dev \
   --port "${port}" --persist-to "${state_dir}" >"${log_file}" 2>&1 &
 server_pid=$!
 
