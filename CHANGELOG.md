@@ -4,6 +4,8 @@ All notable changes to hayate-auth are documented here.
 
 ## Unreleased
 
+## [0.10.0] - 2026-07-27
+
 ### Added
 
 - Add RFC 7009 token revocation, RFC 7662 confidential resource-server
