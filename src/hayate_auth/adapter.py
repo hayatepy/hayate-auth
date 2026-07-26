@@ -2,7 +2,7 @@
 
 Database libraries implement these six methods; everything else in
 hayate-auth is written against them. ``Where`` deliberately supports only
-the four operators the core actually uses.
+the small operator set the core actually uses.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from typing import Any, Literal, NamedTuple, Protocol, runtime_checkable
 class Where(NamedTuple):
     field: str
     value: Any
-    op: Literal["eq", "lt", "gt", "in"] = "eq"
+    op: Literal["eq", "ne", "lt", "gt", "in"] = "eq"
 
 
 @runtime_checkable

@@ -16,6 +16,7 @@ MODELS: dict[str, tuple[str, ...]] = {
         "expires_at",
         "ip_address",
         "user_agent",
+        "last_active_at",
         "created_at",
     ),
     "account": (
@@ -137,6 +138,7 @@ CREATE TABLE IF NOT EXISTS "session" (
   expires_at TEXT NOT NULL,
   ip_address TEXT,
   user_agent TEXT,
+  last_active_at TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS session_user_id ON "session"(user_id);
@@ -297,10 +299,31 @@ CREATE INDEX IF NOT EXISTS oauth_token_user_client
   ON "oauth_token"(user_id, client_id);
 """
 
+SESSION_INACTIVITY_MIGRATION = """\
+ALTER TABLE "session"
+  ADD COLUMN last_active_at TEXT;
+UPDATE "session"
+  SET last_active_at = created_at
+  WHERE last_active_at IS NULL;
+"""
+
 MIGRATIONS = {
     "0.9.1": {
-        "sqlite": TOTP_SINGLE_USE_MIGRATION + OAUTH_GRANT_REVOCATION_MIGRATION,
-        "postgres": TOTP_SINGLE_USE_MIGRATION + OAUTH_GRANT_REVOCATION_MIGRATION,
-        "d1": TOTP_SINGLE_USE_MIGRATION + OAUTH_GRANT_REVOCATION_MIGRATION,
+        "sqlite": (
+            TOTP_SINGLE_USE_MIGRATION
+            + OAUTH_GRANT_REVOCATION_MIGRATION
+            + SESSION_INACTIVITY_MIGRATION
+        ),
+        "postgres": (
+            TOTP_SINGLE_USE_MIGRATION
+            + OAUTH_GRANT_REVOCATION_MIGRATION
+            + SESSION_INACTIVITY_MIGRATION
+            + 'ALTER TABLE "session" ALTER COLUMN last_active_at SET NOT NULL;\n'
+        ),
+        "d1": (
+            TOTP_SINGLE_USE_MIGRATION
+            + OAUTH_GRANT_REVOCATION_MIGRATION
+            + SESSION_INACTIVITY_MIGRATION
+        ),
     }
 }

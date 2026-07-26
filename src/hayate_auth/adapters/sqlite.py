@@ -18,7 +18,7 @@ from typing import Any
 from ..adapter import Where
 from ..schema import MODELS, SQLITE_SCHEMA
 
-_OPS = {"eq": "=", "lt": "<", "gt": ">"}
+_OPS = {"eq": "=", "ne": "!=", "lt": "<", "gt": ">"}
 
 
 def _validate(model: str, fields: Sequence[str]) -> None:

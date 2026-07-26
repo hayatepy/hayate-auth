@@ -15,6 +15,9 @@ All notable changes to hayate-auth are documented here.
   password change, with a normalized local common-password baseline, a bounded
   asynchronous breach checker, and Better Auth-compatible change-password
   request fields.
+- Add independently enforced session inactivity expiry, bounded atomic
+  activity touches, fresh-session-protected listing and revocation endpoints,
+  and explicit administrative session revocation primitives.
 
 ### Security
 
@@ -31,6 +34,9 @@ All notable changes to hayate-auth are documented here.
   checker failures fail closed by default without creating users, changing
   credentials, or consuming reset tokens; fail-open behavior requires an
   explicit configuration choice.
+- Store no session token material in management responses, scope user-driven
+  revocation by both session and owner, and make concurrent revocation win
+  against an in-flight activity touch.
 
 ## [0.9.1] - 2026-07-26
 

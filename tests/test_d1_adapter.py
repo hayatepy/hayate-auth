@@ -106,6 +106,39 @@ async def test_operators_sort_limit(adapter):
     assert newest[0]["id"] == "u3"
     chosen = await adapter.find_many("user", [Where("id", ["u1", "u3"], "in")])
     assert {r["id"] for r in chosen} == {"u1", "u3"}
+    others = await adapter.find_many("user", [Where("id", "u2", "ne")])
+    assert {r["id"] for r in others} == {"u1", "u3"}
+
+
+async def test_session_activity_compare_and_swap_has_one_d1_winner(adapter):
+    await adapter.create("user", _user(1))
+    old = "2026-07-27T00:00:00+00:00"
+    await adapter.create(
+        "session",
+        {
+            "id": "session-1",
+            "token_hash": "hash-1",
+            "user_id": "u1",
+            "expires_at": "2026-08-03T00:00:00+00:00",
+            "ip_address": None,
+            "user_agent": "D1 test",
+            "last_active_at": old,
+            "created_at": old,
+        },
+    )
+
+    async def touch(stamp):
+        return await adapter.update_many(
+            "session",
+            [Where("id", "session-1"), Where("last_active_at", old)],
+            {"last_active_at": stamp},
+        )
+
+    results = await asyncio.gather(
+        touch("2026-07-27T00:05:00+00:00"),
+        touch("2026-07-27T00:05:01+00:00"),
+    )
+    assert sorted(results) == [0, 1]
 
 
 async def test_identifier_validation_still_applies(adapter):

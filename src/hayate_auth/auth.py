@@ -29,6 +29,9 @@ class Auth:
         base_path: str = "/api/auth",
         trusted_origins: tuple[str, ...] | list[str] = (),
         session_ttl: timedelta = timedelta(days=7),
+        session_idle_timeout: timedelta | None = timedelta(days=1),
+        session_touch_interval: timedelta = timedelta(minutes=5),
+        session_fresh_ttl: timedelta | None = timedelta(days=1),
         verification_ttl: timedelta = timedelta(hours=1),
         send_reset_password: Any | None = None,
         send_verification_email: Any | None = None,
@@ -44,12 +47,27 @@ class Auth:
             raise ValueError("secret must be a non-empty string")
         if not base_path.startswith("/"):
             raise ValueError("base_path must start with '/'")
+        if session_ttl <= timedelta(0):
+            raise ValueError("session_ttl must be greater than zero")
+        if session_idle_timeout is not None and session_idle_timeout <= timedelta(0):
+            raise ValueError("session_idle_timeout must be greater than zero or None")
+        if session_touch_interval <= timedelta(0):
+            raise ValueError("session_touch_interval must be greater than zero")
+        if session_idle_timeout is not None and session_touch_interval >= session_idle_timeout:
+            raise ValueError("session_touch_interval must be less than session_idle_timeout")
+        if session_fresh_ttl is not None and session_fresh_ttl <= timedelta(0):
+            raise ValueError("session_fresh_ttl must be greater than zero or None")
+        if not callable(getattr(adapter, "update_many", None)):
+            raise TypeError("session activity tracking requires an adapter with update_many()")
         self.secret = secret
         self.adapter = adapter
         self.crypto = crypto if crypto is not None else default_backend()
         self.base_path = base_path.rstrip("/")
         self.trusted_origins = frozenset(trusted_origins)
         self.session_ttl = session_ttl
+        self.session_idle_timeout = session_idle_timeout
+        self.session_touch_interval = session_touch_interval
+        self.session_fresh_ttl = session_fresh_ttl
         self.verification_ttl = verification_ttl
         # App-owned delivery callbacks: async (public_user, token) -> None.
         # The app builds the link and sends the mail; the core only mints
@@ -65,10 +83,6 @@ class Auth:
         # AS mode (v0.6): an AuthorizationServer config, or None. When set,
         # the OAuth 2.1 endpoints and the RFC 8414 well-known route go live.
         self.authorization_server = authorization_server
-        if authorization_server is not None and not callable(getattr(adapter, "update_many", None)):
-            raise TypeError(
-                "authorization-server mode requires an adapter with atomic update_many()"
-            )
         # Passkeys (v0.7): a PasskeyConfig, or None -> routes answer 404.
         self.passkey = passkey
         # Route table = built-ins + built-in plugins + user plugins
@@ -181,13 +195,43 @@ class Auth:
     async def get_session(self, request: Request) -> tuple[dict[str, Any], dict[str, Any]] | None:
         """(public user, public session) for the request's cookie, or None."""
         raw = getattr(request, "raw", request)
-        record = await sessions.resolve_session(self.adapter, raw)
+        record = await sessions.resolve_session(
+            self.adapter,
+            raw,
+            idle_timeout=self.session_idle_timeout,
+            touch_interval=self.session_touch_interval,
+        )
         if record is None:
             return None
         user_row = await self.adapter.find_one("user", [Where("id", record["user_id"])])
         if user_row is None:
             return None
         return public_user(user_row), sessions.public_session(record)
+
+    async def list_user_sessions(self, user_id: str) -> list[dict[str, Any]]:
+        """Administrative primitive; callers provide their own authorization."""
+        return await sessions.list_active_sessions(
+            self.adapter,
+            user_id,
+            idle_timeout=self.session_idle_timeout,
+        )
+
+    async def revoke_user_session(self, user_id: str, session_id: str) -> int:
+        """Administratively revoke one session owned by ``user_id``."""
+        return await sessions.revoke_user_session(self.adapter, user_id, session_id)
+
+    async def revoke_user_sessions(
+        self,
+        user_id: str,
+        *,
+        except_session_id: str | None = None,
+    ) -> int:
+        """Administratively revoke all, or all but one, user sessions."""
+        return await sessions.revoke_user_sessions(
+            self.adapter,
+            user_id,
+            except_session_id=except_session_id,
+        )
 
     async def verify_api_key(self, key: str) -> dict[str, Any] | None:
         """Verify an API key, returning ``{user_id, scopes, key_id, name}`` or

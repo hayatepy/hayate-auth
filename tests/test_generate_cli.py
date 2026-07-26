@@ -36,6 +36,10 @@ def test_upgrade_from_091_preserves_existing_two_factor(capsys):
             "",
         )
         .replace(
+            "  last_active_at TEXT NOT NULL,\n",
+            "",
+        )
+        .replace(
             "  grant_id TEXT NOT NULL,\n  scope TEXT,\n  revoked INTEGER NOT NULL DEFAULT 0,\n",
             "  scope TEXT,\n",
         )
@@ -67,6 +71,17 @@ def test_upgrade_from_091_preserves_existing_two_factor(capsys):
             "SECRET",
             1,
             "2026-07-26T00:00:00+00:00",
+            "2026-07-26T00:00:00+00:00",
+        ),
+    )
+    connection.execute(
+        'INSERT INTO "session" '
+        "(id, token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
+        (
+            "session-1",
+            "session-hash",
+            "u1",
+            "2026-08-02T00:00:00+00:00",
             "2026-07-26T00:00:00+00:00",
         ),
     )
@@ -154,3 +169,7 @@ def test_upgrade_from_091_preserves_existing_two_factor(capsys):
     ).fetchone()
     assert code == ("consent-1",)
     assert token == ("consent-1",)
+    session = connection.execute(
+        'SELECT last_active_at FROM "session" WHERE id = ?', ("session-1",)
+    ).fetchone()
+    assert session == ("2026-07-26T00:00:00+00:00",)
