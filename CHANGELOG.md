@@ -4,6 +4,12 @@ All notable changes to hayate-auth are documented here.
 
 ## Unreleased
 
+### Security
+
+- Advance the independent-review target to signed v0.10.1, retain the v0.10.0
+  amendment as history, and promote the configured server-wide DPoP
+  sender-constraint row to test-backed ASVS coverage.
+
 ## [0.10.1] - 2026-07-27
 
 ### Security

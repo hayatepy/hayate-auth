@@ -221,7 +221,7 @@ auth = Auth(
 - Coverage ledger: [docs/asvs.md](docs/asvs.md) (selected OWASP ASVS 5.0.0
   controls, exact IDs and explicit gaps; not a certification).
 - Independent review pack: [audit/README.md](audit/README.md) retains the
-  signed v0.9.1 base and pins signed v0.10.0 as the current delta-review
+  signed v0.9.1 base and pins signed v0.10.1 as the current delta-review
   target, including release/SBOM hashes, a threat model, SQLite/direct HTTP +
   PostgreSQL DDL + workerd/D1 profiles, and a reviewer RFP. The audit has not
   yet been commissioned.

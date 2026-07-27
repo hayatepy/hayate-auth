@@ -1,12 +1,14 @@
 schema = 1
 base = "target.toml"
-amendment = "amendments/v0.10.0.toml"
+amendment = "amendments/v0.10.1.toml"
 
 [scope]
 manifest_files = [
   "CHANGELOG.md",
   "audit/amendments/v0.10.0.md",
   "audit/amendments/v0.10.0.toml",
+  "audit/amendments/v0.10.1.md",
+  "audit/amendments/v0.10.1.toml",
   "audit/current.toml",
   "docs/dpop.md",
   "docs/oauth-revocation-introspection.md",

@@ -1,9 +1,9 @@
-# Threat model for hayate-auth v0.10.0
+# Threat model for hayate-auth v0.10.1
 
-This is the current threat model for the signed v0.10.0 review target. The
+This is the current threat model for the signed v0.10.1 review target. The
 signed v0.9.1 target remains the immutable review base; the security-relevant
 range and residual risks are summarized in
-`amendments/v0.10.0.md`.
+`amendments/v0.10.1.md`.
 
 ## Security objectives and assets
 
@@ -95,7 +95,7 @@ key. Proof parsing, time/method/URL/access-token binding, and shared replay
 storage fail closed. Bearer remains the default MCP compatibility profile.
 Passkeys bind origin, RP ID, purpose, and challenge and reject counter
 regression. Security regression evidence for the base and current delta is
-enumerated in `target.toml` and `amendments/v0.10.0.toml`.
+enumerated in `target.toml` and `amendments/v0.10.1.toml`.
 
 ## Recoverable secrets and database compromise
 
@@ -121,9 +121,10 @@ deployment's secret manager, not in source or D1 variables committed to Git.
   is exposed. The DPoP profile does not implement server-provided nonce
   challenges; clients vulnerable to hostile proof pre-generation need an
   additional nonce policy before claiming protection from that attacker.
-- `DPoPConfig.require_bound_tokens` is intended to enforce server-wide
-  DPoP-only issuance, but the signed v0.10.0 target does not contain selected
-  regression evidence for that policy. It remains an explicit ASVS gap.
+- ASVS sender-constraint coverage applies only when
+  `DPoPConfig.require_bound_tokens=True` and every resource uses
+  `DPoPRequestVerifier`. The default interoperability profile remains Bearer
+  and must not be presented as sender-constrained.
 - DPoP replay safety requires all replicas/isolates to use the same atomic
   persistence boundary. The in-memory replay store is not a multi-replica
   production control.

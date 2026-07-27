@@ -13,17 +13,17 @@ Check out the audit-pack commit recorded on
 ```sh
 git fetch --tags --force
 git tag -v v0.9.1
-git tag -v v0.10.0
+git tag -v v0.10.1
 test "$(git rev-list -n 1 v0.9.1)" = \
   b8486cf40cfa227b44062ee41bddb4a6b74132fa
-test "$(git rev-list -n 1 v0.10.0)" = \
-  b885e066355196c9caeedb0819eee03fc4d119ed
+test "$(git rev-list -n 1 v0.10.1)" = \
+  c6878e4fc6ffbcf3514889cf4a4ae03b1ab4ac6b
 uv sync --locked
 uv run python scripts/check_audit_pack.py --check
-git diff --stat v0.9.1..v0.10.0
+git diff --stat v0.9.1..v0.10.1
 ```
 
-The checker downloads the exact base/current PyPI artifacts, the v0.10.0 SPDX
+The checker downloads the exact base/current PyPI artifacts, the v0.10.1 SPDX
 SBOM, and the official ASVS 5.0.0 CSV, then verifies their pinned SHA-256
 digests. It also validates both tag signatures against the committed
 maintainer key and collects selected tests from each exported tagged tree.
@@ -35,14 +35,14 @@ review target:
 review_root="$(pwd)"
 worktree_parent="$(mktemp -d)"
 target_dir="$worktree_parent/target"
-git worktree add --detach "$target_dir" v0.10.0
+git worktree add --detach "$target_dir" v0.10.1
 cd "$target_dir"
 uv sync --locked
 ```
 
 ## Profile A: SQLite and direct/ASGI HTTP
 
-From the detached v0.10.0 worktree, run the full target suite and both locked
+From the detached v0.10.1 worktree, run the full target suite and both locked
 acceptance applications:
 
 ```sh
@@ -63,7 +63,7 @@ itself an audit conclusion.
 
 ## Profile B: PostgreSQL schema application
 
-hayate-auth v0.10.0 does not ship a PostgreSQL runtime adapter. This profile
+hayate-auth v0.10.1 does not ship a PostgreSQL runtime adapter. This profile
 only verifies the advertised generated DDL:
 
 ```sh
@@ -79,13 +79,14 @@ verify idempotence. Against a second, empty, isolated database, run the
 data-preserving upgrade profile:
 
 ```sh
-PGDATABASE=hayate_auth_upgrade_audit \
-  bash scripts/check_audit_postgres_upgrade.sh
+(cd "$review_root" && \
+  PGDATABASE=hayate_auth_upgrade_audit \
+  bash scripts/check_audit_postgres_upgrade.sh)
 ```
 
 The script refuses a database that already contains public tables. It exports
 the signed v0.9.1 tree, applies its schema, inserts representative session,
-TOTP, consent, code, and token rows, applies the v0.10.0 upgrade, and verifies
+TOTP, consent, code, and token rows, applies the v0.10.1 upgrade, and verifies
 every security-state backfill plus the 11-table current schema. Do not
 characterize these results as PostgreSQL query/adapter compatibility.
 
@@ -103,7 +104,7 @@ protected-resource metadata, writes a dynamically registered OAuth client to
 D1, and confirms unauthenticated resource/MCP requests are rejected. This is
 the stable MCP `2025-11-25` Bearer compatibility profile.
 
-## Profile D: v0.10.0 security delta on workerd/D1
+## Profile D: v0.10.1 security delta on workerd/D1
 
 Run the current-wheel acceptance from the same detached target:
 
@@ -111,7 +112,7 @@ Run the current-wheel acceptance from the same detached target:
 bash scripts/check_current_workerd.sh
 ```
 
-This builds the v0.10.0 wheel, installs it into a real Python Worker bundle,
+This builds the v0.10.1 wheel, installs it into a real Python Worker bundle,
 and exercises D1-backed common-password rejection, TOTP replay rejection,
 OAuth issuance/revocation, consent management, and RFC 9449 DPoP proof
 verification/replay rejection through WebCrypto.
