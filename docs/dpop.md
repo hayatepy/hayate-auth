@@ -136,6 +136,25 @@ authorization_server = AuthorizationServer(
 )
 ```
 
+For an ASVS sender-constrained profile, require DPoP across the complete
+authorization server rather than trusting each client to opt in:
+
+```python
+authorization_server = AuthorizationServer(
+    issuer="https://auth.example",
+    login_url="/login",
+    consent_url="/consent",
+    dpop=DPoPConfig(require_bound_tokens=True),
+)
+```
+
+This policy requires `dpop_jkt` at authorization and a valid bound proof at
+code exchange and refresh even when a registered client has
+`dpop_bound_access_tokens=false`. Every issued access token is then DPoP
+bound. Resource servers must still use `DPoPRequestVerifier`; passing a bound
+opaque token to the token-only Bearer verifier does not validate its request
+proof.
+
 Separated resource server:
 
 ```python
@@ -192,9 +211,11 @@ reject any token response whose `token_type` is not `DPoP`.
 - `tests/test_dpop.py`: ASGI signature, request binding, replay, and attack
   regressions;
 - `tests/test_authorization_server.py`: authorization-code, access-token,
-  public refresh-token, registration, and introspection binding;
+  public refresh-token, registration, introspection binding, and server-wide
+  DPoP-only issuance;
 - `scripts/check_current_workerd.sh`: real current workerd + WebCrypto + D1,
-  including proof replay rejection;
+  including proof replay rejection and a separate server-wide DPoP-only
+  isolate;
 - `examples/mcp-oauth/tests/test_e2e.py`: current official MCP SDK Bearer
   interoperability, proving DPoP support did not break the stable MCP path.
 

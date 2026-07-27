@@ -6,12 +6,16 @@ source_worker="${repo_dir}/spike/as-workers"
 dpop_worker_entry="${repo_dir}/spike/dpop-workers/entry.py"
 test_dir="$(mktemp -d)"
 log_file="${test_dir}.log"
+dpop_only_log_file="${test_dir}.dpop-only.log"
 # Keep the D1 persistence directory outside the watched Worker source tree;
 # otherwise every SQLite write triggers a Wrangler source reload.
 state_dir="$(mktemp -d)"
+dpop_only_state_dir="$(mktemp -d)"
 tooling_dir="$(mktemp -d)"
 port=8792
+dpop_only_port=8793
 server_pid=""
+dpop_only_server_pid=""
 
 cleanup() {
   status=$?
@@ -19,8 +23,15 @@ cleanup() {
     kill "${server_pid}" 2>/dev/null || true
     wait "${server_pid}" 2>/dev/null || true
   fi
+  if [[ -n "${dpop_only_server_pid}" ]] && kill -0 "${dpop_only_server_pid}" 2>/dev/null; then
+    kill "${dpop_only_server_pid}" 2>/dev/null || true
+    wait "${dpop_only_server_pid}" 2>/dev/null || true
+  fi
   if [[ "${status}" -ne 0 ]] && [[ -f "${log_file}" ]]; then
     cat "${log_file}"
+  fi
+  if [[ "${status}" -ne 0 ]] && [[ -f "${dpop_only_log_file}" ]]; then
+    cat "${dpop_only_log_file}"
   fi
   exit "${status}"
 }
@@ -42,6 +53,8 @@ npm ci --ignore-scripts
 "${repo_dir}/.venv/bin/python" -m hayate_auth generate --dialect d1 >schema.sql
 npx --no-install wrangler d1 execute AUTH_DB --local \
   --persist-to "${state_dir}" --file schema.sql >/dev/null
+npx --no-install wrangler d1 execute AUTH_DB --local \
+  --persist-to "${dpop_only_state_dir}" --file schema.sql >/dev/null
 
 # Install the locked wasm wheels directly into the only directory Wrangler
 # should bundle. Pywrangler also creates host tooling virtualenvs beside the
@@ -69,6 +82,11 @@ node serve_current_workerd_direct.mjs \
   "${port}" \
   "${state_dir}" >"${log_file}" 2>&1 &
 server_pid=$!
+node serve_current_workerd_direct.mjs \
+  "${dpop_only_port}" \
+  "${dpop_only_state_dir}" \
+  true >"${dpop_only_log_file}" 2>&1 &
+dpop_only_server_pid=$!
 
 ready=false
 for _ in {1..60}; do
@@ -88,7 +106,25 @@ if [[ "${ready}" != true ]]; then
   exit 1
 fi
 
-"${repo_dir}/.venv/bin/python" - "${port}" <<'PY'
+dpop_only_ready=false
+for _ in {1..60}; do
+  if curl --fail --silent --max-time 2 \
+    "http://127.0.0.1:${dpop_only_port}/.well-known/oauth-authorization-server" >/dev/null; then
+    dpop_only_ready=true
+    break
+  fi
+  if ! kill -0 "${dpop_only_server_pid}" 2>/dev/null; then
+    cat "${dpop_only_log_file}"
+    exit 1
+  fi
+  sleep 1
+done
+if [[ "${dpop_only_ready}" != true ]]; then
+  cat "${dpop_only_log_file}"
+  exit 1
+fi
+
+"${repo_dir}/.venv/bin/python" - "${port}" "${dpop_only_port}" <<'PY'
 from __future__ import annotations
 
 import http.client
@@ -109,6 +145,7 @@ from hayate_auth import totp
 from hayate_auth.dpop import access_token_hash, jwk_thumbprint
 
 port = int(sys.argv[1])
+dpop_only_port = int(sys.argv[2])
 
 
 def raw_request(
@@ -491,6 +528,155 @@ status, _, _ = raw_request(
     headers={"authorization": f"Bearer {second['access_token']}"},
 )
 assert status == 401
+
+# A second real workerd isolate enables the authorization-server-wide policy.
+# The client deliberately does not opt in through registration: global policy
+# must still make dpop_jkt and token/refresh proofs mandatory.
+port = dpop_only_port
+status, _, header = request(
+    "/api/auth/sign-up/email",
+    {"email": "workerd-dpop-only@example.com", "password": "long enough"},
+)
+assert status == 200
+dpop_only_session = cookie_pair(header)
+status, dpop_only_client, _ = request(
+    "/api/auth/oauth2/register",
+    {
+        "client_name": "server-wide-dpop-client",
+        "redirect_uris": ["http://127.0.0.1/dpop-only-callback"],
+        "token_endpoint_auth_method": "none",
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+    },
+)
+assert status == 201
+assert dpop_only_client["dpop_bound_access_tokens"] is False
+dpop_only_client_id = dpop_only_client["client_id"]
+dpop_only_redirect_uri = dpop_only_client["redirect_uris"][0]
+dpop_only_resource = f"http://127.0.0.1:{port}/dpop-protected"
+dpop_only_verifier = "workerd-server-wide-dpop-verifier-sufficient-42"
+dpop_only_challenge = b64url(hashlib.sha256(dpop_only_verifier.encode()).digest())
+dpop_only_params = {
+    "response_type": "code",
+    "client_id": dpop_only_client_id,
+    "redirect_uri": dpop_only_redirect_uri,
+    "state": "server-wide-dpop",
+    "code_challenge": dpop_only_challenge,
+    "code_challenge_method": "S256",
+    "scope": "mcp",
+    "resource": dpop_only_resource,
+}
+status, _, headers = raw_request(
+    "GET",
+    f"/api/auth/oauth2/authorize?{urlencode(dpop_only_params)}",
+    headers={"cookie": dpop_only_session},
+)
+assert status == 302
+location = next(value for name, value in headers if name.lower() == "location")
+missing_jkt_error = parse_qs(urlsplit(location).query)
+assert missing_jkt_error["error"] == ["invalid_request"]
+assert "code" not in missing_jkt_error
+
+dpop_only_params["dpop_jkt"] = jkt
+status, _, headers = raw_request(
+    "GET",
+    f"/api/auth/oauth2/authorize?{urlencode(dpop_only_params)}",
+    headers={"cookie": dpop_only_session},
+)
+assert status == 302
+pending_header = next(
+    value for name, value in headers if name.lower() == "set-cookie"
+)
+status, body, _ = request(
+    "/api/auth/oauth2/consent",
+    {"accept": True},
+    cookie=f"{dpop_only_session}; {cookie_pair(pending_header)}",
+)
+assert status == 200
+dpop_only_code = parse_qs(urlsplit(body["redirect_uri"]).query)["code"][0]
+dpop_only_token_url = f"http://127.0.0.1:{port}/api/auth/oauth2/token"
+dpop_only_code_form = {
+    "grant_type": "authorization_code",
+    "code": dpop_only_code,
+    "code_verifier": dpop_only_verifier,
+    "redirect_uri": dpop_only_redirect_uri,
+    "client_id": dpop_only_client_id,
+    "resource": dpop_only_resource,
+}
+status, raw, _ = raw_request(
+    "POST",
+    "/api/auth/oauth2/token",
+    urlencode(dpop_only_code_form),
+    {"content-type": "application/x-www-form-urlencoded"},
+)
+assert status == 400
+assert json.loads(raw)["error"] == "invalid_dpop_proof"
+status, raw, _ = raw_request(
+    "POST",
+    "/api/auth/oauth2/token",
+    urlencode(dpop_only_code_form),
+    {
+        "content-type": "application/x-www-form-urlencoded",
+        "dpop": dpop_proof(
+            private_key,
+            public_jwk,
+            jti="workerd-server-wide-code-proof",
+            method="POST",
+            url=dpop_only_token_url,
+        ),
+    },
+)
+assert status == 200
+dpop_only_tokens = json.loads(raw)
+assert dpop_only_tokens["token_type"] == "DPoP"
+status, _, _ = raw_request(
+    "GET",
+    "/dpop-protected",
+    headers={
+        "authorization": f"DPoP {dpop_only_tokens['access_token']}",
+        "dpop": dpop_proof(
+            private_key,
+            public_jwk,
+            jti="workerd-server-wide-resource-proof",
+            method="GET",
+            url=dpop_only_resource,
+            access_token=dpop_only_tokens["access_token"],
+        ),
+    },
+)
+assert status == 200
+
+dpop_only_refresh_form = {
+    "grant_type": "refresh_token",
+    "refresh_token": dpop_only_tokens["refresh_token"],
+    "client_id": dpop_only_client_id,
+    "resource": dpop_only_resource,
+}
+status, raw, _ = raw_request(
+    "POST",
+    "/api/auth/oauth2/token",
+    urlencode(dpop_only_refresh_form),
+    {"content-type": "application/x-www-form-urlencoded"},
+)
+assert status == 400
+assert json.loads(raw)["error"] == "invalid_dpop_proof"
+status, raw, _ = raw_request(
+    "POST",
+    "/api/auth/oauth2/token",
+    urlencode(dpop_only_refresh_form),
+    {
+        "content-type": "application/x-www-form-urlencoded",
+        "dpop": dpop_proof(
+            private_key,
+            public_jwk,
+            jti="workerd-server-wide-refresh-proof",
+            method="POST",
+            url=dpop_only_token_url,
+        ),
+    },
+)
+assert status == 200
+assert json.loads(raw)["token_type"] == "DPoP"
 PY
 
-echo "current wheel workerd/D1 TOTP, OAuth revocation, and DPoP profile passed"
+echo "current wheel workerd/D1 TOTP, OAuth revocation, and mixed/DPoP-only profiles passed"

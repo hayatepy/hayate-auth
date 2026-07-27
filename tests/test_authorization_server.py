@@ -871,6 +871,113 @@ async def test_dpop_code_access_refresh_and_introspection_are_end_to_end_bound(a
     assert (await rotated.json())["token_type"] == "DPoP"
 
 
+async def test_server_wide_dpop_policy_prevents_bearer_issuance_for_every_client(adapter):
+    resource = "https://mcp.example/mcp"
+    auth = make_auth(
+        adapter,
+        dpop=DPoPConfig(require_bound_tokens=True),
+        resource=resource,
+        scopes_supported=("mcp",),
+    )
+    client = await register(auth)
+    assert client["dpop_bound_access_tokens"] is False
+    cookie = await signed_in_cookie(auth)
+    verifier = "server-wide-dpop-verifier-with-sufficient-length-42"
+
+    missing_jkt = await auth.fetch(
+        authorize_request(
+            client,
+            verifier=verifier,
+            cookie=cookie,
+            scope="mcp",
+            resource=resource,
+        )
+    )
+    assert missing_jkt.status == 302
+    missing_jkt_error = location_params(missing_jkt.headers.get("location"))
+    assert missing_jkt_error["error"] == "invalid_request"
+    assert missing_jkt_error["error_description"] == "dpop_jkt is required for this client"
+    assert "code" not in missing_jkt_error
+
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    public = private_key.public_key().public_numbers()
+    key = (
+        private_key,
+        {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": b64url(public.x.to_bytes(32)),
+            "y": b64url(public.y.to_bytes(32)),
+        },
+    )
+    code = await obtain_code(
+        auth,
+        cookie,
+        client,
+        verifier=verifier,
+        scope="mcp",
+        resource=resource,
+        dpop_jkt=jwk_thumbprint(key[1]),
+    )
+
+    missing_code_proof = await exchange(
+        auth,
+        client,
+        code,
+        verifier=verifier,
+        resource=resource,
+    )
+    assert missing_code_proof.status == 400
+    assert (await missing_code_proof.json())["error"] == "invalid_dpop_proof"
+
+    token_url = f"http://localhost{BASE}/oauth2/token"
+    issued = await exchange(
+        auth,
+        client,
+        code,
+        verifier=verifier,
+        resource=resource,
+        headers={
+            "dpop": make_proof(
+                key,
+                method="POST",
+                url=token_url,
+                jti="server-wide-code-proof",
+            )
+        },
+    )
+    assert issued.status == 200, await issued.text()
+    tokens = await issued.json()
+    assert tokens["token_type"] == "DPoP"
+
+    refresh_data = {
+        "grant_type": "refresh_token",
+        "refresh_token": tokens["refresh_token"],
+        "client_id": client["client_id"],
+        "resource": resource,
+    }
+    missing_refresh_proof = await auth.fetch(request_form(f"{BASE}/oauth2/token", refresh_data))
+    assert missing_refresh_proof.status == 400
+    assert (await missing_refresh_proof.json())["error"] == "invalid_dpop_proof"
+
+    rotated = await auth.fetch(
+        request_form(
+            f"{BASE}/oauth2/token",
+            refresh_data,
+            headers={
+                "dpop": make_proof(
+                    key,
+                    method="POST",
+                    url=token_url,
+                    jti="server-wide-refresh-proof",
+                )
+            },
+        )
+    )
+    assert rotated.status == 200, await rotated.text()
+    assert (await rotated.json())["token_type"] == "DPoP"
+
+
 async def test_dpop_support_preserves_current_bearer_mcp_clients(adapter):
     auth = make_auth(adapter, dpop=DPoPConfig())
     tokens, _client, _cookie = await full_grant(auth, scope="mcp")
