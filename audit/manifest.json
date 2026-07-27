@@ -1,32 +1,58 @@
 {
+  "base": {
+    "commit": "b8486cf40cfa227b44062ee41bddb4a6b74132fa",
+    "name": "hayate-auth",
+    "tag": "v0.9.1",
+    "version": "0.9.1"
+  },
   "files": {
+    ".github/workflows/ci.yml": {
+      "bytes": 3042,
+      "sha256": "fc8ad74951e8ac0a40d6270a2e18e489ad6e10441fd7e4401073687e9a514c1e"
+    },
     ".github/workflows/security-audit.yml": {
-      "bytes": 3150,
-      "sha256": "4583f0cccdb7eeef7a60ef82936d473bfec8f3e40f37a33d82717e32c046cf87"
+      "bytes": 3355,
+      "sha256": "7f0aa74c27b96e848c5137b5b1c8328d66bd8c29d5040cad41a641461315a2fa"
+    },
+    "CHANGELOG.md": {
+      "bytes": 6787,
+      "sha256": "8a56fa0eb0adc0bd617013682a718cd0a74869305eae145fc9b702560695930e"
     },
     "README.md": {
-      "bytes": 9890,
-      "sha256": "86e58e1753ee94740c1a686154fdb6615354c0f5e9683fcd12f1cf56deba2367"
+      "bytes": 9993,
+      "sha256": "8f4baf4506c2e81f97cfe22cb226a4d1355bf1d6070c7e88444d913651fcc717"
     },
     "SECURITY.md": {
-      "bytes": 2621,
-      "sha256": "8bea280b50e51e6e94a08ecd91dc1bba6a7be4e9a9c3b2ce19e4cb9ca44f1fe5"
+      "bytes": 2802,
+      "sha256": "18228654a324e258f9bf726f22acc6c902e53a27293cf8f2afec512674ce1f05"
     },
     "audit/PROCEDURES.md": {
-      "bytes": 3008,
-      "sha256": "25cc49742d7b62981739e6cc614288298aad0f11100aa73eb21fb5cb8897eed0"
+      "bytes": 5045,
+      "sha256": "13af289c93983789cec1fb6a577d750e7a3af971275dc893bc012a3af1a0e91f"
     },
     "audit/README.md": {
-      "bytes": 2236,
-      "sha256": "2b93ab7e4f495f849f6890017cf28b018201b607f0b6e937f1f8d411b404bfb0"
+      "bytes": 2882,
+      "sha256": "b1e1a8d7bab7cd675ebc74ab5f849d33e241915f60d5cf0fe7cbdd5bd4a3a1d7"
     },
     "audit/RFP.md": {
-      "bytes": 3098,
-      "sha256": "2e2526b26dba6a537131da6353a5fe1af2e269665b54040dff4c43f4ff126cad"
+      "bytes": 3871,
+      "sha256": "05e68d75e56b5c11f12b1f102dacb6b5e63f635d49bed79956cd9264e36c8cfe"
     },
     "audit/THREAT_MODEL.md": {
-      "bytes": 6038,
-      "sha256": "48ce434f8b6c75e3a7d555765c67dbecdb246a0ff62972f6e205dd52094a874f"
+      "bytes": 8365,
+      "sha256": "e164c9510623b7a436ac659561e5e010b8e26dc6306ba782a0dbbc3ed3c56854"
+    },
+    "audit/amendments/v0.10.0.md": {
+      "bytes": 4055,
+      "sha256": "570da12f4f512faf33843bac289704060d949ce71042744f36fe1caab4460709"
+    },
+    "audit/amendments/v0.10.0.toml": {
+      "bytes": 4089,
+      "sha256": "f9eb2f42cf6aa8d41d9fc857986fa26269160000c3d3f95cebdc2fe12e9f212e"
+    },
+    "audit/current.toml": {
+      "bytes": 525,
+      "sha256": "df3354eeaa1b0bee1107c556be2728182d9d4f10a19f6278761e4e870ae34ad6"
     },
     "audit/maintainer-signing-key.asc": {
       "bytes": 2712,
@@ -37,16 +63,44 @@
       "sha256": "4b36067b9ffeedc9121202cf9e1b4dd48754c2b68f3445894b9b22c2f04f2971"
     },
     "docs/asvs.md": {
-      "bytes": 10066,
-      "sha256": "a0157cc1c09813c48b3d9487ca629053879f1c8f3a7cada334f6d69389b8e442"
+      "bytes": 11829,
+      "sha256": "8c01a10ced1a9a5d465cce4e622a35f25b8d8477bfb244e23b160326e2538e4b"
+    },
+    "docs/dpop.md": {
+      "bytes": 7967,
+      "sha256": "2f6161f877bad61a0848a15f3c7c91a1e83f50af5c510a3ddcfd743150149a42"
+    },
+    "docs/oauth-revocation-introspection.md": {
+      "bytes": 4871,
+      "sha256": "64823deb09d9f83f0d0977d767d944f55446dbbf2f2ab8a341d10a160488c06d"
+    },
+    "docs/password-policy.md": {
+      "bytes": 3516,
+      "sha256": "3ee77954fcfd0674772fe44d3cf19a64cd9b684879c4e0c77ba9efd9401fa6f0"
+    },
+    "docs/session-management.md": {
+      "bytes": 4133,
+      "sha256": "1c8e2a15f4c903daa68d0748d40b2c692e32015afa424fbe93a9b5d4ac7631c6"
     },
     "scripts/check_audit_pack.py": {
-      "bytes": 8076,
-      "sha256": "9a866266e0bfd40f13cf1d8b956de5e331b29fff2020502f62a8e9164b272d81"
+      "bytes": 9600,
+      "sha256": "6ee5333bb94621277655b39578e8a624e55161c35b4aee726227b238ec1a037c"
+    },
+    "scripts/check_audit_postgres_upgrade.sh": {
+      "bytes": 3170,
+      "sha256": "c615b295b3bc66e9129da1b3317b73e5a68ed26a0a07d7e8f87ba0b6bc06d6fc"
     },
     "scripts/check_audit_workerd.sh": {
       "bytes": 3834,
       "sha256": "a0e0593f3410e7c7f39638cb660dfad618b98f344157170cf0e577a50cbfc027"
+    },
+    "scripts/check_current_workerd.sh": {
+      "bytes": 15277,
+      "sha256": "c45204e87362b250b71591935756223b11eb59971a38bc1fab9b07adf23f3a5d"
+    },
+    "scripts/serve_current_workerd_direct.mjs": {
+      "bytes": 3886,
+      "sha256": "a672cbb768cabbdc264a8be9d7e4aef7fae02a09a81311d1f4f607b5130f35a8"
     },
     "spike/as-workers/entry.py": {
       "bytes": 5233,
@@ -75,13 +129,17 @@
     "spike/as-workers/wrangler.toml": {
       "bytes": 213,
       "sha256": "f32d38b60090558f522d33f95499a2cd031de87cc3ea7cfe93e5537dfdaf4d0a"
+    },
+    "spike/dpop-workers/entry.py": {
+      "bytes": 2588,
+      "sha256": "1f306a5c3eed3137a1240290c10b406d5bde7c8e26cdc45f5fc95026df107225"
     }
   },
-  "schema": 1,
-  "target": {
-    "commit": "b8486cf40cfa227b44062ee41bddb4a6b74132fa",
+  "review_target": {
+    "commit": "b885e066355196c9caeedb0819eee03fc4d119ed",
     "name": "hayate-auth",
-    "tag": "v0.9.1",
-    "version": "0.9.1"
-  }
+    "tag": "v0.10.0",
+    "version": "0.10.0"
+  },
+  "schema": 2
 }

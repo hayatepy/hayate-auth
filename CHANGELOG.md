@@ -4,6 +4,14 @@ All notable changes to hayate-auth are documented here.
 
 ## Unreleased
 
+### Security
+
+- Preserve signed v0.9.1 as the independent-review base and add signed v0.10.0
+  as a separately pinned current amendment, including release artifacts, SPDX
+  SBOM, delta threat model, current ASVS evidence, and tag-isolated
+  reproduction procedures. Add a PostgreSQL gate that preserves and verifies
+  representative security state across the v0.9.1-to-v0.10.0 migration.
+
 ## [0.10.0] - 2026-07-27
 
 ### Added

@@ -220,9 +220,11 @@ auth = Auth(
 - Sign-in failures are uniform in body and KDF timing (enumeration defense).
 - Coverage ledger: [docs/asvs.md](docs/asvs.md) (selected OWASP ASVS 5.0.0
   controls, exact IDs and explicit gaps; not a certification).
-- Independent review pack: [audit/README.md](audit/README.md) freezes v0.9.1,
-  release hashes, threat model, SQLite/ASGI + PostgreSQL DDL + workerd/D1
-  profiles, and a reviewer RFP. The audit has not yet been commissioned.
+- Independent review pack: [audit/README.md](audit/README.md) retains the
+  signed v0.9.1 base and pins signed v0.10.0 as the current delta-review
+  target, including release/SBOM hashes, a threat model, SQLite/direct HTTP +
+  PostgreSQL DDL + workerd/D1 profiles, and a reviewer RFP. The audit has not
+  yet been commissioned.
 - **You must rate-limit** `/api/auth/*` (hayate middleware or your
   infrastructure): brute-force throttling is deliberately out of core.
 - TOTP seeds and upstream provider access/refresh tokens are stored

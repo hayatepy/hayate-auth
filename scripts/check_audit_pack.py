@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the frozen audit target and its deterministic evidence manifest."""
+"""Verify the immutable audit base, current amendment, and evidence manifest."""
 
 from __future__ import annotations
 
@@ -20,8 +20,9 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-TARGET_PATH = ROOT / "audit" / "target.toml"
-MANIFEST_PATH = ROOT / "audit" / "manifest.json"
+AUDIT_DIR = ROOT / "audit"
+CURRENT_PATH = AUDIT_DIR / "current.toml"
+MANIFEST_PATH = AUDIT_DIR / "manifest.json"
 ASVS_REFERENCE = re.compile(r"\bv5\.0\.0-(\d+\.\d+\.\d+)\b")
 
 
@@ -55,19 +56,40 @@ def download(url: str) -> bytes:
         fail(f"could not download {url}: {exc}")
 
 
-def load_target() -> dict[str, Any]:
-    with TARGET_PATH.open("rb") as source:
+def load_toml(path: Path) -> dict[str, Any]:
+    with path.open("rb") as source:
         return tomllib.load(source)
 
 
-def verify_target(target: dict[str, Any]) -> None:
+def referenced_audit_path(value: str) -> Path:
+    candidate = (AUDIT_DIR / value).resolve()
+    if not candidate.is_relative_to(AUDIT_DIR.resolve()):
+        fail(f"audit reference escapes audit/: {value}")
+    if not candidate.is_file():
+        fail(f"audit reference does not exist: {value}")
+    return candidate
+
+
+def load_review() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    current = load_toml(CURRENT_PATH)
+    if current.get("schema") != 1:
+        fail("audit/current.toml has an unsupported schema")
+    base = load_toml(referenced_audit_path(current["base"]))
+    amendment = load_toml(referenced_audit_path(current["amendment"]))
+    for field in ("version", "tag", "commit"):
+        if amendment["base"][field] != base["target"][field]:
+            fail(f"amendment base {field} does not match the frozen base target")
+    return current, base, amendment
+
+
+def verify_target(target: dict[str, Any], *, label: str) -> None:
     frozen = target["target"]
     tag = frozen["tag"]
     if run("git", "cat-file", "-t", tag) != "tag":
-        fail(f"{tag} is not an annotated tag")
+        fail(f"{label} {tag} is not an annotated tag")
     resolved = run("git", "rev-list", "-n", "1", tag)
     if resolved != frozen["commit"]:
-        fail(f"{tag} resolves to {resolved}, expected {frozen['commit']}")
+        fail(f"{label} {tag} resolves to {resolved}, expected {frozen['commit']}")
 
     with tempfile.TemporaryDirectory(prefix="hayate-auth-audit-gpg-") as gnupg_home:
         env = {**os.environ, "GNUPGHOME": gnupg_home}
@@ -108,15 +130,17 @@ def verify_target(target: dict[str, Any]) -> None:
         if verified.returncode or f"[GNUPG:] VALIDSIG {subkey} " not in signature_status:
             fail(f"{tag} does not have a valid signature from pinned subkey {subkey}")
 
-    for kind in ("wheel", "sdist"):
-        artifact = target["artifacts"][kind]
+    for kind, artifact in sorted(target["artifacts"].items()):
         actual = sha256(download(artifact["url"]))
         if actual != artifact["sha256"]:
-            fail(f"{artifact['filename']} SHA-256 is {actual}, expected {artifact['sha256']}")
+            fail(
+                f"{label} {kind} {artifact['filename']} SHA-256 is {actual}, "
+                f"expected {artifact['sha256']}"
+            )
 
 
-def verify_asvs(target: dict[str, Any]) -> None:
-    standard = target["standards"]["asvs"]
+def verify_asvs(base: dict[str, Any], amendment: dict[str, Any]) -> None:
+    standard = base["standards"]["asvs"]
     data = download(standard["url"])
     actual = sha256(data)
     if actual != standard["sha256"]:
@@ -132,7 +156,7 @@ def verify_asvs(target: dict[str, Any]) -> None:
     if unknown:
         fail(f"unknown ASVS references: {', '.join(unknown)}")
 
-    expected = target["ledger"]
+    expected = amendment["ledger"]
     actual_counts = {
         status: len(re.findall(rf"^\| .+ \| {status} \|", ledger_text, re.MULTILINE))
         for status in ("covered", "external", "gap")
@@ -141,7 +165,7 @@ def verify_asvs(target: dict[str, Any]) -> None:
         fail(f"ledger counts are {actual_counts}, expected {expected}")
 
 
-def verify_evidence(target: dict[str, Any]) -> None:
+def verify_evidence(target: dict[str, Any], *, label: str) -> None:
     tag = target["target"]["tag"]
     archive = subprocess.run(
         ["git", "archive", "--format=tar", tag],
@@ -150,7 +174,7 @@ def verify_evidence(target: dict[str, Any]) -> None:
         capture_output=True,
     )
     if archive.returncode:
-        fail(f"could not export frozen evidence tree {tag}: {archive.stderr.decode()}")
+        fail(f"could not export {label} evidence tree {tag}: {archive.stderr.decode()}")
 
     with tempfile.TemporaryDirectory(prefix="hayate-auth-audit-target-") as target_dir:
         with tarfile.open(fileobj=io.BytesIO(archive.stdout), mode="r:") as source:
@@ -158,7 +182,7 @@ def verify_evidence(target: dict[str, Any]) -> None:
         frozen_root = Path(target_dir)
         for relative in target["scope"]["evidence_paths"]:
             if not (frozen_root / relative).is_file():
-                fail(f"evidence path does not exist in {tag}: {relative}")
+                fail(f"{label} evidence path does not exist in {tag}: {relative}")
         result = subprocess.run(
             ["uv", "run", "--locked", "pytest", "--collect-only", "-q"],
             cwd=frozen_root,
@@ -167,35 +191,47 @@ def verify_evidence(target: dict[str, Any]) -> None:
             text=True,
         )
         if result.returncode:
-            fail(f"could not collect frozen tests from {tag}:\n{result.stdout}{result.stderr}")
+            fail(f"could not collect {label} tests from {tag}:\n{result.stdout}{result.stderr}")
         collected = set(result.stdout.splitlines())
     missing = sorted(set(target["scope"]["test_nodes"]) - collected)
     if missing:
-        fail(f"test evidence was not collected: {', '.join(missing)}")
+        fail(f"{label} test evidence was not collected: {', '.join(missing)}")
 
 
-def build_manifest(target: dict[str, Any]) -> dict[str, Any]:
+def target_identity(target: dict[str, Any]) -> dict[str, str]:
+    return {field: target["target"][field] for field in ("name", "version", "tag", "commit")}
+
+
+def build_manifest(
+    current: dict[str, Any],
+    base: dict[str, Any],
+    amendment: dict[str, Any],
+) -> dict[str, Any]:
     files: dict[str, dict[str, Any]] = {}
-    for relative in sorted(target["scope"]["manifest_files"]):
+    manifest_files = set(base["scope"]["manifest_files"])
+    manifest_files.update(current["scope"]["manifest_files"])
+    for relative in sorted(manifest_files):
         path = ROOT / relative
         if not path.is_file():
             fail(f"manifest input does not exist: {relative}")
         data = path.read_bytes()
         files[relative] = {"bytes": len(data), "sha256": sha256(data)}
     return {
-        "schema": 1,
-        "target": {
-            "name": target["target"]["name"],
-            "version": target["target"]["version"],
-            "tag": target["target"]["tag"],
-            "commit": target["target"]["commit"],
-        },
+        "schema": 2,
+        "base": target_identity(base),
+        "review_target": target_identity(amendment),
         "files": files,
     }
 
 
-def verify_manifest(target: dict[str, Any], *, write: bool) -> None:
-    expected = build_manifest(target)
+def verify_manifest(
+    current: dict[str, Any],
+    base: dict[str, Any],
+    amendment: dict[str, Any],
+    *,
+    write: bool,
+) -> None:
+    expected = build_manifest(current, base, amendment)
     serialized = json.dumps(expected, indent=2, sort_keys=True) + "\n"
     if write:
         MANIFEST_PATH.write_text(serialized, encoding="utf-8")
@@ -214,13 +250,15 @@ def main() -> int:
     mode.add_argument("--write", action="store_true", help="regenerate the manifest")
     args = parser.parse_args()
 
-    target = load_target()
-    verify_target(target)
-    verify_asvs(target)
-    verify_evidence(target)
-    verify_manifest(target, write=args.write)
+    current, base, amendment = load_review()
+    verify_target(base, label="base")
+    verify_target(amendment, label="review target")
+    verify_asvs(base, amendment)
+    verify_evidence(base, label="base")
+    verify_evidence(amendment, label="review target")
+    verify_manifest(current, base, amendment, write=args.write)
     if args.check:
-        print("audit-pack: target, standards, evidence, and manifest verified")
+        print("audit-pack: base, review target, standards, evidence, and manifest verified")
     return 0
 
 

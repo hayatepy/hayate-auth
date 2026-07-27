@@ -10,10 +10,9 @@ shapes:
 Both paths use the same opaque, hash-at-rest access tokens. JWT and JWKS are
 not required.
 
-The frozen v0.9.1 audit pack intentionally continues to record these
-endpoints as absent at its reviewed commit. This implementation and its test
-evidence belong to the next audit target; the historical manifest is not
-rewritten.
+The immutable v0.9.1 audit base records these endpoints as absent at that
+commit. The v0.10.0 amendment records this implementation and its test
+evidence without rewriting the historical target.
 
 ## Authorization-server configuration
 
