@@ -2,8 +2,9 @@
 
 hayate-auth is **alpha software and has not received an external security
 audit**. Do not run it as the sole protection for production credentials yet.
-The frozen independent-review target, threat model, reproducible environment
-profiles, and reviewer RFP are in [`audit/`](audit/README.md).
+The immutable v0.9.1 review base, current v0.10.0 amendment, threat model,
+reproducible environment profiles, and reviewer RFP are in
+[`audit/`](audit/README.md).
 
 ## Reporting a vulnerability
 
@@ -33,11 +34,13 @@ Please do not open public issues for suspected vulnerabilities.
 
 ## Known limitations
 
-The current release does not prevent reuse of a valid TOTP within its time
-step, check new passwords against breached-password corpora, implement session
-idle timeout/session management UI, issue sender-constrained OAuth tokens, or
-provide end-user token/consent revocation and introspection endpoints. See the
-[threat model](audit/THREAT_MODEL.md) and
+Rate limiting, a current breach-corpus service, production secret/database
+controls, and administrative authorization remain deployment
+responsibilities. DPoP sender constraints are opt-in so stable Bearer MCP
+clients remain compatible, and the supported profile does not implement DPoP
+nonce challenges. Email magic links are not an ASVS Level 3 factor.
+PostgreSQL coverage is generated schema DDL only; hayate-auth does not ship a
+PostgreSQL runtime adapter. See the [threat model](audit/THREAT_MODEL.md) and
 [ASVS 5.0.0 ledger](docs/asvs.md) for exact boundaries.
 
 ## Review triggers

@@ -1,0 +1,20 @@
+schema = 1
+base = "target.toml"
+amendment = "amendments/v0.10.0.toml"
+
+[scope]
+manifest_files = [
+  "CHANGELOG.md",
+  "audit/amendments/v0.10.0.md",
+  "audit/amendments/v0.10.0.toml",
+  "audit/current.toml",
+  "docs/dpop.md",
+  "docs/oauth-revocation-introspection.md",
+  "docs/password-policy.md",
+  "docs/session-management.md",
+  "scripts/check_audit_postgres_upgrade.sh",
+  "scripts/check_current_workerd.sh",
+  "scripts/serve_current_workerd_direct.mjs",
+  "spike/dpop-workers/entry.py",
+  ".github/workflows/ci.yml",
+]

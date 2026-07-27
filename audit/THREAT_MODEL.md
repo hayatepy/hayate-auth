@@ -1,4 +1,9 @@
-# Threat model for hayate-auth v0.9.1
+# Threat model for hayate-auth v0.10.0
+
+This is the current threat model for the signed v0.10.0 review target. The
+signed v0.9.1 target remains the immutable review base; the security-relevant
+range and residual risks are summarized in
+`amendments/v0.10.0.md`.
 
 ## Security objectives and assets
 
@@ -25,8 +30,11 @@ documented security profile.
    access, backups, encryption, retention, and tenant isolation.
 4. Provider OAuth endpoints, email delivery, reverse proxies, TLS, clocks,
    WebAuthn authenticators, and rate limiters are external trust dependencies.
-5. A co-located MCP resource server accepts only tokens verified for its exact
-   RFC 8707 resource.
+5. A co-located or separated MCP resource server accepts only tokens verified
+   for its exact RFC 8707 resource. A separated server relies on an
+   independently provisioned introspection credential.
+6. Opt-in DPoP relies on a client-held P-256 private key and a replay store
+   shared by every authorization/resource-server replica or Worker isolate.
 
 The workerd profile exercises the Worker, D1 binding, authorization server,
 and MCP resource server in one isolate. The ASGI profile exercises the same
@@ -47,8 +55,12 @@ claims about every possible embedding application.
   refresh-token, or client-secret values.
 - A compromised upstream identity provider supplies unverified identity data
   in an account-linking attempt.
-- A faulty or adversarial adapter violates guarded-update atomicity and causes
-  multiple token families to be minted.
+- A faulty or adversarial adapter violates guarded-update or uniqueness
+  atomicity and causes multiple sessions/token families to be minted, a TOTP
+  step or proof to be replayed, or revoked state to be revived.
+- A compromised resource-server credential attempts cross-resource token
+  introspection; a stolen Bearer or DPoP token is replayed against a different
+  method, URL, audience, or client key.
 - A supply-chain attacker tampers with a release artifact, dependency,
   workflow, or audit evidence.
 
@@ -61,12 +73,29 @@ server-side reference tokens and rotate on authentication. HTTPS cookies use
 `__Host-`, Secure, HttpOnly, and SameSite=Lax. Origin and Fetch Metadata checks
 protect cookie-carried state changes.
 
-OAuth authorization codes are short-lived, single-use, client/redirect/resource
-bound, and require PKCE S256. Refresh tokens rotate with family reuse
-detection, resource servers enforce audience and scope, and token responses
-use `Cache-Control: no-store`. Passkeys bind origin, RP ID, purpose, and
-challenge and reject counter regression. Security regression evidence is
-enumerated in `target.toml`.
+OAuth authorization codes are short-lived, single-use,
+client/redirect/resource bound, and require PKCE S256. Refresh tokens rotate
+with family reuse detection. RFC 7009 revocation and end-user consent
+revocation invalidate complete token families without disclosing whether
+foreign material exists. RFC 7662 introspection authenticates a separately
+registered resource server and exposes active state only for its exact
+resource. Consent generations make revocation win against concurrent code or
+refresh issuance.
+
+Sessions enforce absolute and inactivity expiry, bound activity-write
+frequency, fresh-session checks for management, owner-scoped revocation, and
+responses that never expose token material. TOTP persists the last accepted
+time step behind a guarded atomic update. Every password-establishment path
+uses one normalized common/compromised-password policy and fails closed by
+default when its optional checker is unavailable.
+
+Opt-in RFC 9449 DPoP binds authorization codes, access tokens, public-client
+refresh families, introspection results, and resource requests to an ES256
+key. Proof parsing, time/method/URL/access-token binding, and shared replay
+storage fail closed. Bearer remains the default MCP compatibility profile.
+Passkeys bind origin, RP ID, purpose, and challenge and reject counter
+regression. Security regression evidence for the base and current delta is
+enumerated in `target.toml` and `amendments/v0.10.0.toml`.
 
 ## Recoverable secrets and database compromise
 
@@ -80,23 +109,27 @@ requires it—application-level envelope encryption supplied outside this
 release. The `AUTH_SECRET` and provider client secrets must be held in the
 deployment's secret manager, not in source or D1 variables committed to Git.
 
-## Known gaps and accepted/delegated risks
+## Residual and accepted/delegated risks
 
 - Credential stuffing, password guessing, and malicious dynamic registration
   require external per-IP and per-account throttling. The core deliberately
   has no process-local limiter because it would not coordinate across Workers.
-- TOTP verification accepts the same valid time-step code more than once.
-  ASVS `v5.0.0-6.5.1` is not met for TOTP until the accepted step is persisted
-  and atomically consumed.
-- Password registration does not check a top-3000 or breached-password corpus
-  (`v5.0.0-6.2.4`, `v5.0.0-6.2.12`).
-- Sessions enforce absolute expiry but not inactivity timeout, active-session
-  listing, or user-driven revoke-others (`v5.0.0-7.3.1`,
-  `v5.0.0-7.5.2`).
-- The authorization server has no end-user token/consent revocation or
-  introspection endpoint (`v5.0.0-10.4.9`, `v5.0.0-10.7.3`), and it does not
-  issue sender-constrained access tokens (`v5.0.0-10.3.5`,
-  `v5.0.0-10.4.14`).
+- The built-in common-password set is a deterministic offline baseline.
+  Deployments needing a current breach corpus must inject a privacy-preserving
+  checker and choose the documented availability policy.
+- DPoP is opt-in and the default Bearer profile remains replayable if a token
+  is exposed. The DPoP profile does not implement server-provided nonce
+  challenges; clients vulnerable to hostile proof pre-generation need an
+  additional nonce policy before claiming protection from that attacker.
+- `DPoPConfig.require_bound_tokens` is intended to enforce server-wide
+  DPoP-only issuance, but the signed v0.10.0 target does not contain selected
+  regression evidence for that policy. It remains an explicit ASVS gap.
+- DPoP replay safety requires all replicas/isolates to use the same atomic
+  persistence boundary. The in-memory replay store is not a multi-replica
+  production control.
+- Session management exposes secure API primitives, not a user interface.
+  Administrative revocation methods deliberately rely on the embedding
+  application's authorization policy.
 - Email magic links are a documented convenience authenticator, not an ASVS
   Level 3 factor; `v5.0.0-6.3.6` explicitly excludes email authentication at
   that level.
@@ -106,9 +139,10 @@ deployment's secret manager, not in source or D1 variables committed to Git.
 
 ## Review priorities
 
-The independent review should prioritize authentication bypass, adapter
-atomicity under concurrency, OAuth 2.1/RFC 9700 behavior, CIMD and redirect
-validation, token-family state transitions, CSRF/cookie assumptions, secret
-storage, D1/workerd behavior, and differences between direct/ASGI and Worker
-execution. Findings should distinguish library defects from required
-deployment controls.
+The independent review should prioritize authentication bypass; adapter
+atomicity and uniqueness under concurrency; TOTP/session/consent/revocation
+races; OAuth 2.1/RFC 9700 behavior; DPoP proof parsing, binding and replay;
+CIMD and redirect validation; token-family state transitions; CSRF/cookie
+assumptions; secret storage; migration correctness; D1/workerd behavior; and
+differences between direct/ASGI and Worker execution. Findings should
+distinguish library defects from required deployment controls.

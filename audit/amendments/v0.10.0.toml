@@ -1,0 +1,83 @@
+[base]
+version = "0.9.1"
+tag = "v0.9.1"
+commit = "b8486cf40cfa227b44062ee41bddb4a6b74132fa"
+
+[target]
+name = "hayate-auth"
+version = "0.10.0"
+tag = "v0.10.0"
+commit = "b885e066355196c9caeedb0819eee03fc4d119ed"
+release = "https://github.com/hayatepy/hayate-auth/releases/tag/v0.10.0"
+primary_signing_key_fingerprint = "B22B98ABB2D503307AB6A3160718EFA6506BB669"
+tag_signing_subkey_fingerprint = "0C153FFE2B0274365ACB1BF1AEFA86FA828C52C5"
+
+[artifacts.wheel]
+filename = "hayate_auth-0.10.0-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/57/02/6c885eab310934e9422fe43736e466461c87f00261544dde5189345747a5/hayate_auth-0.10.0-py3-none-any.whl"
+sha256 = "1cbc26bdacb98db7368f793af1fde542cea766a6ee47e752de18b4ea66f6fc20"
+
+[artifacts.sdist]
+filename = "hayate_auth-0.10.0.tar.gz"
+url = "https://files.pythonhosted.org/packages/14/bd/66910702ff6be68f7a73888edd32f51c6e2764b9b6523b219a6e624cdfe8/hayate_auth-0.10.0.tar.gz"
+sha256 = "7bb2e59023fcb6d6d8584844dcd009f524b385cccf4a11f248b823f720c9f454"
+
+[artifacts.sbom]
+filename = "sbom.spdx.json"
+url = "https://github.com/hayatepy/hayate-auth/releases/download/v0.10.0/sbom.spdx.json"
+sha256 = "d8314fd1b057a259cd6343cad3e865a9e914c413190dff10e76a931b4e82ffba"
+
+[provenance]
+published_at = "2026-07-26T18:38:16Z"
+immutable_release = true
+release_run = "https://github.com/hayatepy/hayate-auth/actions/runs/30215089175"
+ci_run = "https://github.com/hayatepy/hayate-auth/actions/runs/30215082906"
+security_audit_run = "https://github.com/hayatepy/hayate-auth/actions/runs/30215082913"
+codeql_run = "https://github.com/hayatepy/hayate-auth/actions/runs/30215082805"
+
+[ledger]
+covered = 49
+external = 3
+gap = 1
+
+[scope]
+evidence_paths = [
+  "docs/dpop.md",
+  "docs/oauth-revocation-introspection.md",
+  "docs/password-policy.md",
+  "docs/session-management.md",
+  "scripts/check_current_workerd.sh",
+  "spike/dpop-workers/entry.py",
+  "src/hayate_auth/authorization_server.py",
+  "src/hayate_auth/dpop.py",
+  "src/hayate_auth/password.py",
+  "src/hayate_auth/session.py",
+  "src/hayate_auth/two_factor.py",
+  "tests/test_authorization_server.py",
+  "tests/test_dpop.py",
+  "tests/test_password_policy.py",
+  "tests/test_session_management.py",
+  "tests/test_totp.py",
+]
+test_nodes = [
+  "tests/test_totp.py::test_totp_step_is_single_use_and_state_never_rolls_back",
+  "tests/test_totp.py::test_concurrent_totp_redemption_has_exactly_one_winner",
+  "tests/test_password_policy.py::test_default_local_blocklist_rejects_common_normalized_values[password]",
+  "tests/test_password_policy.py::test_injected_checker_applies_to_signup_reset_and_change",
+  "tests/test_password_policy.py::test_checker_failure_is_fail_closed_and_does_not_mutate",
+  "tests/test_password_policy.py::test_checker_timeout_is_bounded",
+  "tests/test_session_management.py::test_idle_timeout_uses_bounded_activity_touches",
+  "tests/test_session_management.py::test_concurrent_revocation_wins_against_activity_touch",
+  "tests/test_session_management.py::test_list_and_revoke_sessions_without_token_material",
+  "tests/test_session_management.py::test_sensitive_session_management_requires_fresh_session",
+  "tests/test_authorization_server.py::test_revocation_is_idempotent_private_and_family_wide",
+  "tests/test_authorization_server.py::test_revocation_racing_refresh_never_discloses_a_live_replacement",
+  "tests/test_authorization_server.py::test_introspection_is_resource_bound_authenticated_and_private",
+  "tests/test_authorization_server.py::test_introspection_hides_tokens_from_another_resource",
+  "tests/test_authorization_server.py::test_user_can_list_and_revoke_a_consent",
+  "tests/test_authorization_server.py::test_consent_revocation_racing_code_exchange_cannot_leave_a_live_token",
+  "tests/test_dpop.py::test_valid_resource_proof_is_key_and_access_token_bound",
+  "tests/test_dpop.py::test_proof_replay_is_rejected_even_under_concurrency",
+  "tests/test_authorization_server.py::test_dpop_code_access_refresh_and_introspection_are_end_to_end_bound",
+  "tests/test_authorization_server.py::test_dpop_support_preserves_current_bearer_mcp_clients",
+]

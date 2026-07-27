@@ -1,10 +1,11 @@
 # OWASP ASVS 5.0.0 control ledger
 
 This is a test-backed ledger of selected controls relevant to hayate-auth
-v0.9.1. It is not an OWASP certification, an assertion of a complete ASVS
+v0.10.0. It is not an OWASP certification, an assertion of a complete ASVS
 level, or a substitute for an independent review. Requirement references use
 the OWASP-recommended versioned form and are validated against the official
-ASVS 5.0.0 CSV pinned in `audit/target.toml`.
+ASVS 5.0.0 CSV pinned by the v0.9.1 base in `audit/target.toml`; the current
+target and expected counts are pinned in `audit/amendments/v0.10.0.toml`.
 
 Statuses are **covered** (implemented and regression-tested), **external**
 (required but deliberately delegated to the embedding deployment), and
@@ -19,6 +20,7 @@ controls that are not yet ledger claims.
 | User-set passwords require at least 8 characters | `v5.0.0-6.2.1` | covered | `password.py`, `tests/test_email_flow.py` |
 | Password policy imposes no character-class composition rules | `v5.0.0-6.2.5` | covered | `password.py` |
 | Passwords of at least 64 characters are accepted (limit 256) | `v5.0.0-6.2.9` | covered | `password.py` |
+| A top-3000 policy-matching password set and current breached-password corpus must be supplied by the deployment; the built-in compact baseline alone does not meet these controls | `v5.0.0-6.2.4`, `v5.0.0-6.2.12` | external | `docs/password-policy.md`, `tests/test_password_policy.py::test_injected_checker_applies_to_signup_reset_and_change`, `::test_checker_failure_is_fail_closed_and_does_not_mutate` |
 | Passwords use a salted, computationally intensive KDF at documented cost | `v5.0.0-11.4.2` | covered | `crypto/`, `tests/test_crypto.py::test_production_parameters_match_owasp` |
 | Secret/hash comparisons use constant-time library operations | `v5.0.0-11.2.4` | covered | `hmac.compare_digest` in `crypto/` and authorization-server code |
 | Bad credentials return a generic response that does not identify a user | `v5.0.0-6.3.8` | covered | `tests/test_email_flow.py::test_wrong_password_and_unknown_user_are_identical_401s` |
@@ -30,6 +32,7 @@ controls that are not yet ledger claims.
 | Unverified provider email does not auto-link an existing account | `v5.0.0-6.3.8` | covered | `tests/test_oauth.py::test_unverified_email_does_not_hijack_existing_user` |
 | Password sign-in can require a second TOTP factor | `v5.0.0-6.3.3` | covered | `two_factor.py`, `tests/test_totp.py` |
 | Password success alone cannot create a session when TOTP is enabled | `v5.0.0-6.3.3` | covered | `tests/test_totp.py::test_password_alone_never_yields_a_session_with_2fa` |
+| An accepted TOTP time step is atomically single-use and cannot roll back to an older adjacent-window step | `v5.0.0-6.5.1` | covered | `tests/test_totp.py::test_totp_step_is_single_use_and_state_never_rolls_back`, `::test_concurrent_totp_redemption_has_exactly_one_winner` |
 | Magic-link values are CSPRNG-generated, hashed at rest, short-lived, and one-shot | `v5.0.0-6.5.2`, `v5.0.0-6.5.3`, `v5.0.0-6.5.5` | covered | `tests/test_magic_link.py::test_token_is_single_use`, `::test_expired_token_is_rejected` |
 | Magic-link requests do not disclose whether an account exists | `v5.0.0-6.3.8` | covered | `tests/test_magic_link.py::test_unknown_and_known_emails_answer_identically` |
 | Magic-link callback URLs are restricted to the configured origin | `v5.0.0-1.2.2` | covered | `tests/test_magic_link.py::test_offsite_callback_url_is_rejected` |
@@ -55,7 +58,7 @@ controls that are not yet ledger claims.
 | Absolute session expiry is enforced and expired rows are purged | `v5.0.0-7.3.2` | covered | `tests/test_attacks.py::test_expired_session_is_rejected_and_deleted` |
 | Cookie-carried state changes validate origin and Fetch Metadata | `v5.0.0-3.5.1`, `v5.0.0-3.5.3` | covered | `csrf.py`, `tests/test_csrf.py` |
 | Provider OAuth callback destinations reject cross-origin redirects | `v5.0.0-1.2.2` | covered | `tests/test_oauth.py::test_open_redirect_callback_url_is_rejected` |
-| Idle timeout, active-session listing, and user-driven revoke-others are absent | `v5.0.0-7.3.1`, `v5.0.0-7.5.2` | gap | `audit/THREAT_MODEL.md` |
+| Idle timeout is enforced; fresh authenticated users can list sessions and revoke one, others, or all without exposing token material | `v5.0.0-7.3.1`, `v5.0.0-7.5.2` | covered | `tests/test_session_management.py::test_idle_timeout_uses_bounded_activity_touches`, `::test_list_and_revoke_sessions_without_token_material`, `::test_sensitive_session_management_requires_fresh_session` |
 
 ## V10 — OAuth authorization server and resource server
 
@@ -75,17 +78,18 @@ controls that are not yet ledger claims.
 | Guarded atomic transitions prevent concurrent code/refresh redemption from minting multiple live families | `v5.0.0-10.4.2`, `v5.0.0-10.4.5` | covered | `::test_concurrent_code_exchange_mints_exactly_one_token_family`, `::test_concurrent_refresh_mints_exactly_one_replacement` |
 | Token responses are marked `Cache-Control: no-store` | `v5.0.0-14.3.2` | covered | `::test_token_response_is_uncacheable` |
 | Open dynamic registration requires deployment-level anti-automation | `v5.0.0-10.4.7`, `v5.0.0-6.1.1` | external | URI/metadata validation is in-core; throttling is an infrastructure requirement |
-| End-user token/consent revocation and introspection endpoints are absent | `v5.0.0-10.4.9`, `v5.0.0-10.7.3` | gap | `audit/THREAT_MODEL.md`, `DESIGN.md` |
+| Token-family and end-user consent revocation are private, immediate, and race-safe; authenticated resource servers can introspect only their exact resource | `v5.0.0-10.4.9`, `v5.0.0-10.7.3` | covered | `tests/test_authorization_server.py::test_revocation_is_idempotent_private_and_family_wide`, `::test_introspection_is_resource_bound_authenticated_and_private`, `::test_consent_revocation_racing_code_exchange_cannot_leave_a_live_token` |
+| DPoP primitives bind selected clients and reject proof replay, but the signed target lacks regression evidence for server-wide DPoP-only issuance and defaults to Bearer interoperability | `v5.0.0-10.3.5`, `v5.0.0-10.4.14` | gap | `DPoPConfig.require_bound_tokens`, `tests/test_dpop.py`, `tests/test_authorization_server.py::test_dpop_code_access_refresh_and_introspection_are_end_to_end_bound` |
 
-## Applicable controls not yet claimed
+## Applicable limitations not claimed as gaps
 
-The ratchet does not hide uncovered work. TOTP codes are not atomically
-single-use within a time step (`v5.0.0-6.5.1`); password registration does not
-query top-password or breach corpora (`v5.0.0-6.2.4`,
-`v5.0.0-6.2.12`); access tokens are not sender-constrained
-(`v5.0.0-10.3.5`, `v5.0.0-10.4.14`); and email magic links do not satisfy the
-ASVS Level 3 prohibition on email authentication (`v5.0.0-6.3.6`). These are
-tracked as explicit limitations in `audit/THREAT_MODEL.md`, not counted as
-implemented coverage.
+The password row is deliberately external rather than covered: the built-in
+set has fewer than the 3000 values required by `v5.0.0-6.2.4`, and a live
+breach corpus is injected. The DPoP row remains a gap until a signed target
+proves server-wide `require_bound_tokens` behavior. Email magic links do not
+satisfy the ASVS Level 3 prohibition on email authentication
+(`v5.0.0-6.3.6`). Deployment throttling and these profile boundaries are
+tracked in `audit/THREAT_MODEL.md`; this ledger does not claim that all ASVS
+controls or an ASVS level have been assessed.
 
-**Ratchet: 46 covered, 2 external, 2 gap (50 selected claims).**
+**Ratchet: 49 covered, 3 external, 1 gap (53 selected claims).**
