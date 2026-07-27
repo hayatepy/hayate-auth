@@ -1,11 +1,11 @@
 # OWASP ASVS 5.0.0 control ledger
 
 This is a test-backed ledger of selected controls relevant to hayate-auth
-v0.10.0. It is not an OWASP certification, an assertion of a complete ASVS
+v0.10.1. It is not an OWASP certification, an assertion of a complete ASVS
 level, or a substitute for an independent review. Requirement references use
 the OWASP-recommended versioned form and are validated against the official
 ASVS 5.0.0 CSV pinned by the v0.9.1 base in `audit/target.toml`; the current
-target and expected counts are pinned in `audit/amendments/v0.10.0.toml`.
+target and expected counts are pinned in `audit/amendments/v0.10.1.toml`.
 
 Statuses are **covered** (implemented and regression-tested), **external**
 (required but deliberately delegated to the embedding deployment), and
@@ -79,17 +79,18 @@ controls that are not yet ledger claims.
 | Token responses are marked `Cache-Control: no-store` | `v5.0.0-14.3.2` | covered | `::test_token_response_is_uncacheable` |
 | Open dynamic registration requires deployment-level anti-automation | `v5.0.0-10.4.7`, `v5.0.0-6.1.1` | external | URI/metadata validation is in-core; throttling is an infrastructure requirement |
 | Token-family and end-user consent revocation are private, immediate, and race-safe; authenticated resource servers can introspect only their exact resource | `v5.0.0-10.4.9`, `v5.0.0-10.7.3` | covered | `tests/test_authorization_server.py::test_revocation_is_idempotent_private_and_family_wide`, `::test_introspection_is_resource_bound_authenticated_and_private`, `::test_consent_revocation_racing_code_exchange_cannot_leave_a_live_token` |
-| DPoP primitives bind selected clients and reject proof replay, but the signed target lacks regression evidence for server-wide DPoP-only issuance and defaults to Bearer interoperability | `v5.0.0-10.3.5`, `v5.0.0-10.4.14` | gap | `DPoPConfig.require_bound_tokens`, `tests/test_dpop.py`, `tests/test_authorization_server.py::test_dpop_code_access_refresh_and_introspection_are_end_to_end_bound` |
+| The server-wide DPoP profile issues only key-bound access tokens, while request-aware resource verification enforces key, request, token-hash, and replay binding | `v5.0.0-10.3.5`, `v5.0.0-10.4.14` | covered | `tests/test_authorization_server.py::test_server_wide_dpop_policy_prevents_bearer_issuance_for_every_client`, `tests/test_dpop.py::test_valid_resource_proof_is_key_and_access_token_bound`, `::test_proof_replay_is_rejected_even_under_concurrency`, `scripts/check_current_workerd.sh` |
 
 ## Applicable limitations not claimed as gaps
 
 The password row is deliberately external rather than covered: the built-in
 set has fewer than the 3000 values required by `v5.0.0-6.2.4`, and a live
-breach corpus is injected. The DPoP row remains a gap until a signed target
-proves server-wide `require_bound_tokens` behavior. Email magic links do not
-satisfy the ASVS Level 3 prohibition on email authentication
+breach corpus is injected. DPoP coverage is explicitly limited to the
+server-wide profile; the default Bearer compatibility profile does not meet
+those sender-constraint controls. Email magic links do not satisfy the ASVS
+Level 3 prohibition on email authentication
 (`v5.0.0-6.3.6`). Deployment throttling and these profile boundaries are
 tracked in `audit/THREAT_MODEL.md`; this ledger does not claim that all ASVS
 controls or an ASVS level have been assessed.
 
-**Ratchet: 49 covered, 3 external, 1 gap (53 selected claims).**
+**Ratchet: 50 covered, 3 external, 0 gap (53 selected claims).**

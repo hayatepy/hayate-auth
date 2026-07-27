@@ -2,7 +2,7 @@
 
 hayate-auth is **alpha software and has not received an external security
 audit**. Do not run it as the sole protection for production credentials yet.
-The immutable v0.9.1 review base, current v0.10.0 amendment, threat model,
+The immutable v0.9.1 review base, current v0.10.1 amendment, threat model,
 reproducible environment profiles, and reviewer RFP are in
 [`audit/`](audit/README.md).
 
