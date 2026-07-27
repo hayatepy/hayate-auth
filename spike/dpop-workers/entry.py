@@ -22,6 +22,7 @@ def get_auth() -> Auth:
     global _auth
     if _auth is None:
         issuer = getattr(env, "ISSUER", None) or "http://127.0.0.1:8787"
+        require_dpop = getattr(env, "REQUIRE_DPOP", "false") == "true"
         _auth = Auth(
             secret="spike-secret-not-for-production",
             adapter=D1Adapter(env.DB),
@@ -30,7 +31,7 @@ def get_auth() -> Auth:
                 login_url="/login",
                 consent_url="/consent",
                 scopes_supported=("mcp",),
-                dpop=DPoPConfig(),
+                dpop=DPoPConfig(require_bound_tokens=require_dpop),
             ),
         )
     return _auth

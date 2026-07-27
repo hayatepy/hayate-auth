@@ -4,6 +4,8 @@ All notable changes to hayate-auth are documented here.
 
 ## Unreleased
 
+## [0.10.1] - 2026-07-27
+
 ### Security
 
 - Preserve signed v0.9.1 as the independent-review base and add signed v0.10.0
@@ -11,6 +13,10 @@ All notable changes to hayate-auth are documented here.
   SBOM, delta threat model, current ASVS evidence, and tag-isolated
   reproduction procedures. Add a PostgreSQL gate that preserves and verifies
   representative security state across the v0.9.1-to-v0.10.0 migration.
+- Prove `DPoPConfig(require_bound_tokens=True)` prevents Bearer issuance even
+  for clients that did not opt in individually, including authorization,
+  code-exchange, public refresh, resource-binding, and replay evidence on both
+  CPython and a second real workerd/WebCrypto + D1 isolate.
 
 ## [0.10.0] - 2026-07-27
 

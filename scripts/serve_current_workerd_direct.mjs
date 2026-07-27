@@ -5,11 +5,18 @@ import { once } from "node:events";
 import process from "node:process";
 import { unstable_startWorker } from "wrangler";
 
-const [portArgument, stateDirectory] = process.argv.slice(2);
+const [portArgument, stateDirectory, requireDpop = "false"] =
+  process.argv.slice(2);
 const port = Number(portArgument);
-if (!Number.isInteger(port) || port < 1 || port > 65535 || !stateDirectory) {
+if (
+  !Number.isInteger(port) ||
+  port < 1 ||
+  port > 65535 ||
+  !stateDirectory ||
+  !["false", "true"].includes(requireDpop)
+) {
   throw new Error(
-    "usage: serve_current_workerd_direct.mjs <port> <persistence-directory>",
+    "usage: serve_current_workerd_direct.mjs <port> <persistence-directory> [true|false]",
   );
 }
 
@@ -44,6 +51,10 @@ worker = await unstable_startWorker({
     ISSUER: {
       type: "plain_text",
       value: `http://127.0.0.1:${port}`,
+    },
+    REQUIRE_DPOP: {
+      type: "plain_text",
+      value: requireDpop,
     },
   },
   dev: {

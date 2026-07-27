@@ -15,8 +15,8 @@
       "sha256": "7f0aa74c27b96e848c5137b5b1c8328d66bd8c29d5040cad41a641461315a2fa"
     },
     "CHANGELOG.md": {
-      "bytes": 6787,
-      "sha256": "8a56fa0eb0adc0bd617013682a718cd0a74869305eae145fc9b702560695930e"
+      "bytes": 7103,
+      "sha256": "6f8d8b2680ac1f8985e49c4760e57f51b00255bffa72a93766f9042ec748ca76"
     },
     "README.md": {
       "bytes": 9993,
@@ -67,8 +67,8 @@
       "sha256": "8c01a10ced1a9a5d465cce4e622a35f25b8d8477bfb244e23b160326e2538e4b"
     },
     "docs/dpop.md": {
-      "bytes": 7967,
-      "sha256": "2f6161f877bad61a0848a15f3c7c91a1e83f50af5c510a3ddcfd743150149a42"
+      "bytes": 8755,
+      "sha256": "fe35d90d26054722ba3bb8e5ad3f4dd80bf83db293cb8bdee809b3dabff9571d"
     },
     "docs/oauth-revocation-introspection.md": {
       "bytes": 4871,
@@ -95,12 +95,12 @@
       "sha256": "a0e0593f3410e7c7f39638cb660dfad618b98f344157170cf0e577a50cbfc027"
     },
     "scripts/check_current_workerd.sh": {
-      "bytes": 15277,
-      "sha256": "c45204e87362b250b71591935756223b11eb59971a38bc1fab9b07adf23f3a5d"
+      "bytes": 21362,
+      "sha256": "e910d392a2bb7951fcdb3b4e671e3e39f881275db7a6ad7a931e5a77b1808aae"
     },
     "scripts/serve_current_workerd_direct.mjs": {
-      "bytes": 3886,
-      "sha256": "a672cbb768cabbdc264a8be9d7e4aef7fae02a09a81311d1f4f607b5130f35a8"
+      "bytes": 4059,
+      "sha256": "c6f6b72971ed846ccad2039bf125dfcd93156bce4bd480837a624da63d6581dd"
     },
     "spike/as-workers/entry.py": {
       "bytes": 5233,
@@ -131,8 +131,8 @@
       "sha256": "f32d38b60090558f522d33f95499a2cd031de87cc3ea7cfe93e5537dfdaf4d0a"
     },
     "spike/dpop-workers/entry.py": {
-      "bytes": 2588,
-      "sha256": "1f306a5c3eed3137a1240290c10b406d5bde7c8e26cdc45f5fc95026df107225"
+      "bytes": 2692,
+      "sha256": "9ad316343dddbe087ed279c888457eaabaaa95c7cfcdd62f34fbb417a137dab3"
     }
   },
   "review_target": {
