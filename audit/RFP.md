@@ -3,7 +3,7 @@
 ## Objective
 
 hayatepy seeks an independent application-security review of hayate-auth
-v0.10.1 at commit `c6878e4fc6ffbcf3514889cf4a4ae03b1ab4ac6b`,
+v0.10.3 at commit `20dd7ae08c12051d23fdbe4b242578f800dacdfc`,
 using signed v0.9.1 as the prior review base. The goal is to identify
 exploitable defects and unsafe integration assumptions before recommending
 the library as the sole authentication layer for production credentials. This
@@ -20,12 +20,13 @@ work. Automated scanning may assist but cannot replace manual review.
 ## Scope and deliverables
 
 Review the target chain in `current.toml`, `target.toml`, and
-`amendments/v0.10.1.toml`, plus the boundaries in `THREAT_MODEL.md`. Inspect
-the complete v0.10.1 target, with focused delta review of `v0.9.1..v0.10.1`,
+`amendments/v0.10.3.toml`, plus the boundaries in `THREAT_MODEL.md`. Inspect
+the complete v0.10.3 target, with focused delta review of `v0.9.1..v0.10.3`,
 including the core, SQLite/D1 adapters, OAuth client and
 authorization-server modes, sessions, recovery, TOTP, magic link, passkeys,
 API keys, MCP integration, revocation/introspection/consent, DPoP, release
-provenance, migration DDL, and integration guidance.
+provenance, migration DDL, scheme-bound cookie acceptance, trusted proxy URL
+reconstruction, and integration guidance.
 
 Deliver:
 
@@ -44,7 +45,7 @@ Severity should use CVSS 4.0 plus a plain-language rationale. The report must
 separate library vulnerabilities, insecure defaults, documentation defects,
 and deployment responsibilities. Validate the selected ASVS ledger, but do
 not infer coverage solely from existing tests. The final report and public
-summary must identify v0.10.1 by tag and commit.
+summary must identify v0.10.3 by tag and commit.
 
 ## Coordination and disclosure
 

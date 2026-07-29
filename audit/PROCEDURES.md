@@ -13,20 +13,25 @@ Check out the audit-pack commit recorded on
 ```sh
 git fetch --tags --force
 git tag -v v0.9.1
-git tag -v v0.10.1
+git tag -v v0.10.3
 test "$(git rev-list -n 1 v0.9.1)" = \
   b8486cf40cfa227b44062ee41bddb4a6b74132fa
-test "$(git rev-list -n 1 v0.10.1)" = \
-  c6878e4fc6ffbcf3514889cf4a4ae03b1ab4ac6b
+test "$(git rev-list -n 1 v0.10.3)" = \
+  20dd7ae08c12051d23fdbe4b242578f800dacdfc
 uv sync --locked
 uv run python scripts/check_audit_pack.py --check
-git diff --stat v0.9.1..v0.10.1
+git diff --stat v0.9.1..v0.10.3
+test "$(git diff --name-only v0.10.2..v0.10.3 -- src/hayate_auth)" = \
+  src/hayate_auth/__init__.py
 ```
 
-The checker downloads the exact base/current PyPI artifacts, the v0.10.1 SPDX
+The checker downloads the exact base/current PyPI artifacts, the v0.10.3 SPDX
 SBOM, and the official ASVS 5.0.0 CSV, then verifies their pinned SHA-256
 digests. It also validates both tag signatures against the committed
-maintainer key and collects selected tests from each exported tagged tree.
+maintainer key, collects selected tests from each exported tagged tree, and
+rejects stale public current-target references. The final `git diff` assertion
+proves that v0.10.3 changes only the public version constant under the package
+source after the v0.10.2 security fix.
 
 Create a detached worktree so every runtime profile executes the exact current
 review target:
@@ -35,14 +40,14 @@ review target:
 review_root="$(pwd)"
 worktree_parent="$(mktemp -d)"
 target_dir="$worktree_parent/target"
-git worktree add --detach "$target_dir" v0.10.1
+git worktree add --detach "$target_dir" v0.10.3
 cd "$target_dir"
 uv sync --locked
 ```
 
 ## Profile A: SQLite and direct/ASGI HTTP
 
-From the detached v0.10.1 worktree, run the full target suite and both locked
+From the detached v0.10.3 worktree, run the full target suite and both locked
 acceptance applications:
 
 ```sh
@@ -63,7 +68,7 @@ itself an audit conclusion.
 
 ## Profile B: PostgreSQL schema application
 
-hayate-auth v0.10.1 does not ship a PostgreSQL runtime adapter. This profile
+hayate-auth v0.10.3 does not ship a PostgreSQL runtime adapter. This profile
 only verifies the advertised generated DDL:
 
 ```sh
@@ -86,9 +91,9 @@ data-preserving upgrade profile:
 
 The script refuses a database that already contains public tables. It exports
 the signed v0.9.1 tree, applies its schema, inserts representative session,
-TOTP, consent, code, and token rows, applies the v0.10.1 upgrade, and verifies
-every security-state backfill plus the 11-table current schema. Do not
-characterize these results as PostgreSQL query/adapter compatibility.
+TOTP, consent, code, and token rows, applies the cumulative v0.10.3 upgrade,
+and verifies every security-state backfill plus the 11-table current schema.
+Do not characterize these results as PostgreSQL query/adapter compatibility.
 
 ## Profile C: stable MCP Bearer path on workerd/D1
 
@@ -104,7 +109,7 @@ protected-resource metadata, writes a dynamically registered OAuth client to
 D1, and confirms unauthenticated resource/MCP requests are rejected. This is
 the stable MCP `2025-11-25` Bearer compatibility profile.
 
-## Profile D: v0.10.1 security delta on workerd/D1
+## Profile D: v0.10.3 security delta on workerd/D1
 
 Run the current-wheel acceptance from the same detached target:
 
@@ -112,7 +117,7 @@ Run the current-wheel acceptance from the same detached target:
 bash scripts/check_current_workerd.sh
 ```
 
-This builds the v0.10.1 wheel, installs it into a real Python Worker bundle,
+This builds the v0.10.3 wheel, installs it into a real Python Worker bundle,
 and exercises D1-backed common-password rejection, TOTP replay rejection,
 OAuth issuance/revocation, consent management, and RFC 9449 DPoP proof
 verification/replay rejection through WebCrypto.

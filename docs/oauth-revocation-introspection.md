@@ -11,7 +11,7 @@ Both paths use the same opaque, hash-at-rest access tokens. JWT and JWKS are
 not required.
 
 The immutable v0.9.1 audit base records these endpoints as absent at that
-commit. The current v0.10.1 amendment records this implementation and its test
+commit. The current v0.10.3 amendment records this implementation and its test
 evidence without rewriting the historical target.
 
 ## Authorization-server configuration

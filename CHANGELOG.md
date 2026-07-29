@@ -4,6 +4,14 @@ All notable changes to hayate-auth are documented here.
 
 ## Unreleased
 
+### Security
+
+- Advance the independent-review target to signed v0.10.3, pin its public
+  artifacts and provenance, and add the v0.10.2 scheme-bound cookie fix to the
+  reviewer scope and reproducible evidence.
+- Reject audit-pack drift when public security documentation or the PostgreSQL
+  upgrade profile names a review target other than `audit/current.toml`.
+
 ## [0.10.3] - 2026-07-30
 
 ### Fixed

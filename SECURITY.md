@@ -2,7 +2,7 @@
 
 hayate-auth is **alpha software and has not received an external security
 audit**. Do not run it as the sole protection for production credentials yet.
-The immutable v0.9.1 review base, current v0.10.1 amendment, threat model,
+The immutable v0.9.1 review base, current v0.10.3 amendment, threat model,
 reproducible environment profiles, and reviewer RFP are in
 [`audit/`](audit/README.md).
 
@@ -28,6 +28,9 @@ Please do not open public issues for suspected vulnerabilities.
   rest and in backups, access auditing, and rotation/revocation procedures.
 - Attack regressions (session fixation, replay after sign-out, expiry,
   enumeration timing, CSRF) are part of the test suite and never removed.
+- Production adapters and trusted reverse proxies must preserve the externally
+  correct request URL scheme. HTTPS accepts only `__Host-` auth cookies; plain
+  HTTP accepts only the bare local-development names.
 - Rate limiting is explicitly the embedding application's responsibility;
   deployments must throttle `/api/auth/*`, especially password, magic-link,
   reset, TOTP, and dynamic-registration endpoints.

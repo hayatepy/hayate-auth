@@ -11,10 +11,10 @@ audit has already happened.
 - The signed `v0.9.1` tag at
   `b8486cf40cfa227b44062ee41bddb4a6b74132fa` is the immutable base recorded in
   `target.toml`.
-- The signed `v0.10.1` tag at
-  `c6878e4fc6ffbcf3514889cf4a4ae03b1ab4ac6b` is the current review target
-  recorded in `amendments/v0.10.1.toml`. The v0.10.0 amendment is retained as
-  an intermediate historical target.
+- The signed `v0.10.3` tag at
+  `20dd7ae08c12051d23fdbe4b242578f800dacdfc` is the current review target
+  recorded in `amendments/v0.10.3.toml`. The v0.10.0 and v0.10.1 amendments
+  are retained as intermediate historical targets.
 
 The base pins its published wheel, source distribution, and the official
 OWASP ASVS 5.0.0 CSV. The amendment pins the current wheel, source
@@ -26,7 +26,7 @@ cannot silently replace review evidence.
 Reviewers should start with:
 
 - `THREAT_MODEL.md` for assets, trust boundaries, adversaries, and known gaps.
-- `amendments/v0.10.1.md` for the security-relevant delta and residual risks.
+- `amendments/v0.10.3.md` for the security-relevant delta and residual risks.
 - `../docs/asvs.md` for the selected ASVS 5.0.0 control ledger.
 - `PROCEDURES.md` for the exact SQLite/direct/ASGI, PostgreSQL
   schema/migration, and workerd/D1 reproduction profiles.
@@ -35,7 +35,8 @@ Reviewers should start with:
 Run `uv run python scripts/check_audit_pack.py --check` from the repository
 root. This verifies both signed targets, release artifact/SBOM hashes, the
 official ASVS source hash and requirement IDs, evidence references, current
-ledger counts, and this pack's deterministic manifest.
+ledger counts, public current-target references, and this pack's deterministic
+manifest.
 
 ## Product scope
 
