@@ -62,9 +62,19 @@ at least two relevant references. State whether production Cloudflare account
 configuration review and penetration testing are included or priced
 separately.
 
-The engagement is commissioned only when scope, reviewer, budget, and dates
-are recorded on the tracking issue. Publishing this RFP and audit pack is
-preparation, not completion of the independent audit.
+Respond using [`PROPOSAL_TEMPLATE.md`](PROPOSAL_TEMPLATE.md) so target
+acceptance, independence, coverage, exclusions, commercials, disclosure,
+retest, and public-summary terms can be compared consistently. Completed
+proposals and commercially sensitive award terms may remain private. Record
+the non-sensitive engagement fields on the tracking issue; never place
+suspected vulnerabilities or exploit details in a public proposal or issue.
+
+The engagement is commissioned only when the private award record contains
+the agreed scope, reviewer, budget, and dates. The tracking issue records the
+reviewer and independence statement, confirmed target and scope, agreement
+status, and non-sensitive dates; exact price and payment terms may remain
+private. Publishing this RFP and audit pack is preparation, not completion of
+the independent audit.
 
 The acceptance gate for a production-trust recommendation is: every confirmed
 critical/high finding is fixed and retested; medium/low findings are fixed or

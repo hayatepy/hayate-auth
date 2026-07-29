@@ -12,6 +12,7 @@ manifest_files = [
   "audit/amendments/v0.10.3.md",
   "audit/amendments/v0.10.3.toml",
   "audit/current.toml",
+  "audit/PROPOSAL_TEMPLATE.md",
   "docs/dpop.md",
   "docs/oauth-revocation-introspection.md",
   "docs/password-policy.md",

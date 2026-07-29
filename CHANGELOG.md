@@ -4,8 +4,14 @@ All notable changes to hayate-auth are documented here.
 
 ## Unreleased
 
+## [0.10.4] - 2026-07-30
+
 ### Security
 
+- Add a target-bound independent-review proposal and award template covering
+  reviewer independence, named staffing, methodology, reproducible profiles,
+  exclusions, commercials, private disclosure, evidence handling, retesting,
+  and a publishable executive summary.
 - Advance the independent-review target to signed v0.10.3, pin its public
   artifacts and provenance, and add the v0.10.2 scheme-bound cookie fix to the
   reviewer scope and reproducible evidence.

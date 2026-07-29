@@ -227,6 +227,15 @@ def verify_current_references(
         "audit/RFP.md": (
             f"{tag} at commit `{commit}`",
             f"`{amendment_stem}.toml`",
+            "`PROPOSAL_TEMPLATE.md`",
+        ),
+        "audit/PROPOSAL_TEMPLATE.md": (
+            f"# Proposal response template: hayate-auth {tag}",
+            f"Review target: `{tag}` at",
+            commit,
+            f"Source range: `v0.9.1..{tag}`",
+            "Profiles A-D",
+            "## Maintainer award record",
         ),
         "audit/PROCEDURES.md": (
             f"git tag -v {tag}",
