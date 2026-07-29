@@ -1,9 +1,9 @@
-# Threat model for hayate-auth v0.10.1
+# Threat model for hayate-auth v0.10.3
 
-This is the current threat model for the signed v0.10.1 review target. The
+This is the current threat model for the signed v0.10.3 review target. The
 signed v0.9.1 target remains the immutable review base; the security-relevant
 range and residual risks are summarized in
-`amendments/v0.10.1.md`.
+`amendments/v0.10.3.md`.
 
 ## Security objectives and assets
 
@@ -30,6 +30,9 @@ documented security profile.
    access, backups, encryption, retention, and tenant isolation.
 4. Provider OAuth endpoints, email delivery, reverse proxies, TLS, clocks,
    WebAuthn authenticators, and rate limiters are external trust dependencies.
+   A trusted adapter or proxy must preserve the externally correct request URL
+   scheme without accepting spoofed forwarding metadata; cookie namespace
+   selection uses that URL and does not parse forwarding headers in-core.
 5. A co-located or separated MCP resource server accepts only tokens verified
    for its exact RFC 8707 resource. A separated server relies on an
    independently provisioned introspection credential.
@@ -61,6 +64,9 @@ claims about every possible embedding application.
 - A compromised resource-server credential attempts cross-resource token
   introspection; a stolen Bearer or DPoP token is replayed against a different
   method, URL, audience, or client key.
+- A sibling origin, downgraded transport, or misconfigured proxy attempts to
+  inject a valid bare auth cookie into an HTTPS request or a `__Host-` cookie
+  into a plain-HTTP local-development request.
 - A supply-chain attacker tampers with a release artifact, dependency,
   workflow, or audit evidence.
 
@@ -70,8 +76,12 @@ Passwords use salted scrypt or PBKDF2-HMAC-SHA256. Raw session,
 verification/magic-link/reset, API-key, OAuth code/access/refresh, and dynamic
 client-secret values are not stored; only digests are persisted. Sessions are
 server-side reference tokens and rotate on authentication. HTTPS cookies use
-`__Host-`, Secure, HttpOnly, and SameSite=Lax. Origin and Fetch Metadata checks
-protect cookie-carried state changes.
+`__Host-`, Secure, HttpOnly, and SameSite=Lax, and HTTPS readers accept only
+the `__Host-` name. Plain HTTP uses and accepts only a separate bare
+local-development name. The scheme-bound reader is shared by sessions,
+provider OAuth state, authorization consent, passkey challenges, and TOTP
+challenges. Origin and Fetch Metadata checks protect cookie-carried state
+changes.
 
 OAuth authorization codes are short-lived, single-use,
 client/redirect/resource bound, and require PKCE S256. Refresh tokens rotate
@@ -95,7 +105,7 @@ key. Proof parsing, time/method/URL/access-token binding, and shared replay
 storage fail closed. Bearer remains the default MCP compatibility profile.
 Passkeys bind origin, RP ID, purpose, and challenge and reject counter
 regression. Security regression evidence for the base and current delta is
-enumerated in `target.toml` and `amendments/v0.10.1.toml`.
+enumerated in `target.toml` and `amendments/v0.10.3.toml`.
 
 ## Recoverable secrets and database compromise
 
@@ -131,6 +141,10 @@ deployment's secret manager, not in source or D1 variables committed to Git.
 - Session management exposes secure API primitives, not a user interface.
   Administrative revocation methods deliberately rely on the embedding
   application's authorization policy.
+- Cookie isolation depends on the externally correct request URL scheme. A
+  proxy or adapter that lets untrusted forwarding headers rewrite an HTTPS
+  request to HTTP selects the local-development namespace and is outside the
+  production profile.
 - Email magic links are a documented convenience authenticator, not an ASVS
   Level 3 factor; `v5.0.0-6.3.6` explicitly excludes email authentication at
   that level.
@@ -143,7 +157,8 @@ deployment's secret manager, not in source or D1 variables committed to Git.
 The independent review should prioritize authentication bypass; adapter
 atomicity and uniqueness under concurrency; TOTP/session/consent/revocation
 races; OAuth 2.1/RFC 9700 behavior; DPoP proof parsing, binding and replay;
-CIMD and redirect validation; token-family state transitions; CSRF/cookie
-assumptions; secret storage; migration correctness; D1/workerd behavior; and
-differences between direct/ASGI and Worker execution. Findings should
-distinguish library defects from required deployment controls.
+CIMD and redirect validation; token-family state transitions; scheme-bound
+cookie acceptance and trusted proxy URL reconstruction; CSRF assumptions;
+secret storage; migration correctness; D1/workerd behavior; and differences
+between direct/ASGI and Worker execution. Findings should distinguish library
+defects from required deployment controls.

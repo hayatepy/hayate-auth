@@ -198,6 +198,75 @@ def verify_evidence(target: dict[str, Any], *, label: str) -> None:
         fail(f"{label} test evidence was not collected: {', '.join(missing)}")
 
 
+def verify_current_references(
+    current: dict[str, Any],
+    amendment: dict[str, Any],
+) -> None:
+    target = amendment["target"]
+    version = target["version"]
+    tag = target["tag"]
+    commit = target["commit"]
+    amendment_stem = f"amendments/{tag}"
+    if current["amendment"] != f"{amendment_stem}.toml":
+        fail(f"current amendment path does not match review target {tag}")
+
+    manifest_files = set(current["scope"]["manifest_files"])
+    for extension in ("md", "toml"):
+        expected = f"audit/{amendment_stem}.{extension}"
+        if expected not in manifest_files:
+            fail(f"current manifest inputs omit {expected}")
+
+    expected_snippets = {
+        "README.md": (f"pins signed {tag} as the current delta-review",),
+        "SECURITY.md": (f"current {tag} amendment",),
+        "audit/README.md": (
+            f"The signed `{tag}` tag at",
+            f"`{commit}` is the current review target",
+            f"`{amendment_stem}.md`",
+        ),
+        "audit/RFP.md": (
+            f"{tag} at commit `{commit}`",
+            f"`{amendment_stem}.toml`",
+        ),
+        "audit/PROCEDURES.md": (
+            f"git tag -v {tag}",
+            f'git worktree add --detach "$target_dir" {tag}',
+            commit,
+        ),
+        "audit/THREAT_MODEL.md": (
+            f"# Threat model for hayate-auth {tag}",
+            f"`{amendment_stem}.md`",
+        ),
+        "docs/asvs.md": (
+            f"hayate-auth\n{tag}.",
+            f"`audit/{amendment_stem}.toml`",
+        ),
+        "docs/oauth-revocation-introspection.md": (f"current {tag} amendment",),
+        "scripts/check_audit_postgres_upgrade.sh": (
+            f"archive {tag}",
+            f"-> {tag} data-preserving upgrade profile passed",
+        ),
+        f"audit/{amendment_stem}.md": (
+            f"# {tag} security-review amendment",
+            f"Current review target: `{tag}` at",
+            commit,
+        ),
+        f"audit/{amendment_stem}.toml": (
+            f'version = "{version}"',
+            f'tag = "{tag}"',
+            f'commit = "{commit}"',
+        ),
+    }
+    for relative, snippets in expected_snippets.items():
+        path = ROOT / relative
+        if not path.is_file():
+            fail(f"current review target reference is missing: {relative}")
+        text = path.read_text(encoding="utf-8")
+        for snippet in snippets:
+            if snippet not in text:
+                fail(f"{relative} does not identify current review target {tag}: {snippet}")
+
+
 def target_identity(target: dict[str, Any]) -> dict[str, str]:
     return {field: target["target"][field] for field in ("name", "version", "tag", "commit")}
 
@@ -256,6 +325,7 @@ def main() -> int:
     verify_asvs(base, amendment)
     verify_evidence(base, label="base")
     verify_evidence(amendment, label="review target")
+    verify_current_references(current, amendment)
     verify_manifest(current, base, amendment, write=args.write)
     if args.check:
         print("audit-pack: base, review target, standards, evidence, and manifest verified")

@@ -20,7 +20,7 @@ fi
 
 mkdir "${work_dir}/base" "${work_dir}/target"
 git -C "${repo_dir}" archive v0.9.1 | tar -x -C "${work_dir}/base"
-git -C "${repo_dir}" archive v0.10.1 | tar -x -C "${work_dir}/target"
+git -C "${repo_dir}" archive v0.10.3 | tar -x -C "${work_dir}/target"
 (
   cd "${work_dir}/base"
   uv run --locked python -m hayate_auth generate --dialect postgres
@@ -131,4 +131,4 @@ test "$(
   psql -Atc "select grant_id from oauth_token where id='token-1'"
 )" = "consent-1"
 
-echo "PostgreSQL v0.9.1 -> v0.10.1 data-preserving upgrade profile passed"
+echo "PostgreSQL v0.9.1 -> v0.10.3 data-preserving upgrade profile passed"

@@ -1,6 +1,6 @@
 schema = 1
 base = "target.toml"
-amendment = "amendments/v0.10.1.toml"
+amendment = "amendments/v0.10.3.toml"
 
 [scope]
 manifest_files = [
@@ -9,6 +9,8 @@ manifest_files = [
   "audit/amendments/v0.10.0.toml",
   "audit/amendments/v0.10.1.md",
   "audit/amendments/v0.10.1.toml",
+  "audit/amendments/v0.10.3.md",
+  "audit/amendments/v0.10.3.toml",
   "audit/current.toml",
   "docs/dpop.md",
   "docs/oauth-revocation-introspection.md",
