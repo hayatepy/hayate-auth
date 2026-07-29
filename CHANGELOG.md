@@ -4,6 +4,13 @@ All notable changes to hayate-auth are documented here.
 
 ## Unreleased
 
+## [0.10.3] - 2026-07-30
+
+### Fixed
+
+- Correct the published release-line and direct-dependency descriptions, and
+  add executable drift checks across project, runtime, and README metadata.
+
 ## [0.10.2] - 2026-07-30
 
 ### Security
