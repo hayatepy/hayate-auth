@@ -43,12 +43,24 @@ def is_secure_request(request: Request) -> bool:
     return request.url.protocol == "https:"
 
 
-def read_token(request: Request) -> str | None:
+def read_scheme_bound_cookie(request: Request, base_name: str) -> str | None:
+    """Read only the cookie name valid for the request's transport.
+
+    HTTPS requests accept the ``__Host-`` form exclusively. Plain HTTP keeps
+    the bare-name fallback for local development, but never accepts an HTTPS
+    cookie name. This prevents a sibling domain from bypassing ``__Host-``
+    isolation by supplying a valid bare-name cookie.
+    """
     header = request.headers.get("cookie")
     if header is None:
         return None
     cookies = parse_cookies(header)
-    return cookies.get(HOST_COOKIE) or cookies.get(COOKIE_BASE)
+    name = f"__Host-{base_name}" if is_secure_request(request) else base_name
+    return cookies.get(name)
+
+
+def read_token(request: Request) -> str | None:
+    return read_scheme_bound_cookie(request, COOKIE_BASE)
 
 
 def session_cookie(token: str, *, secure: bool, max_age: int) -> str:

@@ -148,7 +148,7 @@ async def sign_in_social(auth: Auth, request: Request) -> Response:
 
 async def oauth_callback(auth: Auth, request: Request, provider_id: str) -> Response:
     """GET /callback/:provider — verify state, exchange the code, sign in."""
-    from hayate.cookies import parse_cookies, serialize_set_cookie
+    from hayate.cookies import serialize_set_cookie
 
     from ._signed import unsign_payload
 
@@ -156,10 +156,8 @@ async def oauth_callback(auth: Auth, request: Request, provider_id: str) -> Resp
     if provider is None:
         return problem(404, title="Unknown provider")
 
-    header = request.headers.get("cookie") or ""
-    cookies = parse_cookies(header)
     secure = sessions.is_secure_request(request)
-    raw_state = cookies.get(_state_cookie_name(secure)) or cookies.get(STATE_COOKIE_BASE)
+    raw_state = sessions.read_scheme_bound_cookie(request, STATE_COOKIE_BASE)
     stored = unsign_payload(auth.secret, raw_state) if raw_state else None
     if (
         stored is None

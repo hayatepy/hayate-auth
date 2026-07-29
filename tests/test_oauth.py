@@ -88,7 +88,11 @@ def id_token_flow(adapter):
 async def _begin(auth, callback_url="/") -> tuple[str, str]:
     """Run sign-in/social; return (state, cookie header pair)."""
     res = await auth.fetch(
-        request_json(SIGNIN_SOCIAL, {"provider": "testidp", "callback_url": callback_url})
+        request_json(
+            SIGNIN_SOCIAL,
+            {"provider": "testidp", "callback_url": callback_url},
+            scheme="https",
+        )
     )
     assert res.status == 200
     url = (await res.json())["url"]
@@ -193,6 +197,23 @@ async def test_callback_without_state_cookie_is_rejected(id_token_flow):
     assert res.status == 400
 
 
+async def test_https_callback_rejects_plain_http_state_cookie(id_token_flow):
+    auth, backend = id_token_flow
+    begin = await auth.fetch(
+        request_json(SIGNIN_SOCIAL, {"provider": "testidp", "callback_url": "/"})
+    )
+    state = parse_qs(urlparse((await begin.json())["url"]).query)["state"][0]
+    bare_cookie = cookie_pair(begin)
+    callback = await auth.fetch(
+        Request(
+            f"https://localhost{CALLBACK}?code=c&state={state}",
+            headers={"cookie": bare_cookie},
+        )
+    )
+    assert callback.status == 400
+    assert backend.calls == []
+
+
 async def test_unverified_email_does_not_hijack_existing_user(adapter):
     # Seed a password user, then arrive via OAuth with the same email but
     # email_verified=false: linking must be refused (account takeover).
@@ -219,7 +240,11 @@ async def test_unverified_email_does_not_hijack_existing_user(adapter):
     )
 
     res = await auth.fetch(
-        request_json(SIGNIN_SOCIAL, {"provider": "testidp", "callback_url": "/"})
+        request_json(
+            SIGNIN_SOCIAL,
+            {"provider": "testidp", "callback_url": "/"},
+            scheme="https",
+        )
     )
     state = parse_qs(urlparse((await res.json())["url"]).query)["state"][0]
     cookie = cookie_pair(res)
@@ -254,7 +279,7 @@ async def test_token_endpoint_failure_is_502(adapter):
         providers=[_provider(uses_id_token=True)],
         http_backend=backend,
     )
-    res = await auth.fetch(request_json(SIGNIN_SOCIAL, {"provider": "testidp"}))
+    res = await auth.fetch(request_json(SIGNIN_SOCIAL, {"provider": "testidp"}, scheme="https"))
     state = parse_qs(urlparse((await res.json())["url"]).query)["state"][0]
     cookie = cookie_pair(res)
     cb = await auth.fetch(

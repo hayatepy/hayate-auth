@@ -32,6 +32,39 @@ async def test_https_uses_host_prefix_and_secure(auth):
     assert "Secure" in cookie
 
 
+async def test_session_cookie_acceptance_is_bound_to_the_request_scheme(auth):
+    secure_signup = await auth.fetch(
+        request_json(
+            SIGNUP,
+            {"email": "secure@example.com", "password": "long enough"},
+            scheme="https",
+        )
+    )
+    host_cookie = cookie_pair(secure_signup)
+    bare_cookie = host_cookie.removeprefix("__Host-")
+
+    accepted = await auth.fetch(
+        request_json(SESSION, method="GET", cookie=host_cookie, scheme="https")
+    )
+    rejected = await auth.fetch(
+        request_json(SESSION, method="GET", cookie=bare_cookie, scheme="https")
+    )
+    assert (await accepted.json())["user"]["email"] == "secure@example.com"
+    assert await rejected.json() == {"session": None, "user": None}
+
+    plain_signup = await auth.fetch(
+        request_json(
+            SIGNUP,
+            {"email": "plain@example.com", "password": "long enough"},
+        )
+    )
+    plain_cookie = cookie_pair(plain_signup)
+    rejected_host = await auth.fetch(
+        request_json(SESSION, method="GET", cookie=f"__Host-{plain_cookie}")
+    )
+    assert await rejected_host.json() == {"session": None, "user": None}
+
+
 async def test_duplicate_email_is_422(auth):
     body = {"email": "dup@example.com", "password": "long enough"}
     assert (await auth.fetch(request_json(SIGNUP, body))).status == 200
