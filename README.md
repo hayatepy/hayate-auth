@@ -8,7 +8,7 @@ Standards-first authentication for [hayate](https://github.com/hayatepy/hayate) 
 a mountable, better-auth-style auth handler built on the WHATWG Request/Response
 model.
 
-> **Status: alpha (0.9.x).** Email+password, sessions, CSRF, email
+> **Status: alpha (0.10.x).** Email+password, sessions, CSRF, email
 > verification, password reset, **OAuth 2.1 + PKCE** (Google / GitHub), **TOTP
 > two-factor**, **API keys**, an **OAuth 2.1 authorization server** (AS
 > mode: RFC 8414 metadata, RFC 7591 dynamic registration, MCP Client ID
@@ -206,8 +206,9 @@ auth = Auth(
   `fetch(Request) -> Response` handler. hayate is the only Python framework
   whose user-facing surface *is* WHATWG Request/Response — so that architecture
   finally maps 1:1 to Python.
-- Zero-dependency core (its only dependency is hayate, itself zero-dependency).
-  Databases, KDFs, and email are injected protocols.
+- Small portability-first base with **2 direct runtime dependencies**:
+  `hayate` and `hayate-fetch`. Database drivers, KDFs, email delivery, DPoP
+  cryptography, and WebAuthn remain injected protocols or optional extras.
 
 ## Security posture
 
