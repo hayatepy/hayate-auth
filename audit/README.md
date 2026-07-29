@@ -31,6 +31,8 @@ Reviewers should start with:
 - `PROCEDURES.md` for the exact SQLite/direct/ASGI, PostgreSQL
   schema/migration, and workerd/D1 reproduction profiles.
 - `RFP.md` for deliverables, independence requirements, and disclosure terms.
+- `PROPOSAL_TEMPLATE.md` for a comparable proposal response and maintainer
+  award record without publishing commercial or vulnerability details.
 
 Run `uv run python scripts/check_audit_pack.py --check` from the repository
 root. This verifies both signed targets, release artifact/SBOM hashes, the

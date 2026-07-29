@@ -15,8 +15,8 @@
       "sha256": "7f0aa74c27b96e848c5137b5b1c8328d66bd8c29d5040cad41a641461315a2fa"
     },
     "CHANGELOG.md": {
-      "bytes": 8266,
-      "sha256": "4189a041bf2746a89b9cecaf9c81e00f776a5d5b20e65fca45946e3d4961b923"
+      "bytes": 8562,
+      "sha256": "d966c6fce1a7e9b848a71445db146f609ccf56f9a3a945241ffb2e35e27bc047"
     },
     "README.md": {
       "bytes": 10083,
@@ -30,13 +30,17 @@
       "bytes": 5382,
       "sha256": "e0fa680af25e045862c9ada61fde4c79109afab8de18e51a538839721ef1af88"
     },
+    "audit/PROPOSAL_TEMPLATE.md": {
+      "bytes": 6564,
+      "sha256": "7249d5f9258621ba155c57957bdaf07951e467a26617bf0dd303ee8a88775762"
+    },
     "audit/README.md": {
-      "bytes": 3002,
-      "sha256": "fba23ca35b27d12377be91a30b0013b2ac021dbc0f69f37dde7fdb387b0eed63"
+      "bytes": 3148,
+      "sha256": "f09925d96aa0778bdb50a4859dc8b4596580a49ed3405bab42c9b9f057961949"
     },
     "audit/RFP.md": {
-      "bytes": 3937,
-      "sha256": "dbf5db53b61fa2610d248bd105d509e28d1cd2f99fd64b1dea972b3ac227be28"
+      "bytes": 4577,
+      "sha256": "2932fc2f7d33496e4c89a3b29a9a8091b7af8a688bc29b075233f02901df0d82"
     },
     "audit/THREAT_MODEL.md": {
       "bytes": 9385,
@@ -67,8 +71,8 @@
       "sha256": "7c19c981519cdd37f94feb5e1a3826a8e5a09e96c4ee74424712c2ec316ebf50"
     },
     "audit/current.toml": {
-      "bytes": 661,
-      "sha256": "b048dd8f0e706fce4b9a708a45b2133d9c6fd91312624bee2de62fd5680681fc"
+      "bytes": 693,
+      "sha256": "143b79bb2ab779a9e9bb033095e0bfd7b82869814be8819fbd8cf90be823ae36"
     },
     "audit/maintainer-signing-key.asc": {
       "bytes": 2712,
@@ -99,8 +103,8 @@
       "sha256": "1c8e2a15f4c903daa68d0748d40b2c692e32015afa424fbe93a9b5d4ac7631c6"
     },
     "scripts/check_audit_pack.py": {
-      "bytes": 12150,
-      "sha256": "a8ffdd30ad7c975307118b391ad63dcec7f054a9eb72f42dbd316be4ac8ff7b0"
+      "bytes": 12481,
+      "sha256": "00ec4985aafc9f33d401bc3732c6a2ce6224370dc008b895aab6c1acdb0c1103"
     },
     "scripts/check_audit_postgres_upgrade.sh": {
       "bytes": 3170,
