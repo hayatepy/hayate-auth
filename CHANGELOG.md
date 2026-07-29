@@ -4,8 +4,16 @@ All notable changes to hayate-auth are documented here.
 
 ## Unreleased
 
+## [0.10.2] - 2026-07-30
+
 ### Security
 
+- Bind session, OAuth state, authorization consent, passkey challenge, and
+  two-factor challenge cookie acceptance to the request scheme. HTTPS now
+  accepts only the corresponding `__Host-` cookie name; plain HTTP retains
+  only the bare-name fallback for local development.
+- Synchronize the public `hayate_auth.__version__` value with the distribution
+  version.
 - Advance the independent-review target to signed v0.10.1, retain the v0.10.0
   amendment as history, and promote the configured server-wide DPoP
   sender-constraint row to test-backed ASVS coverage.

@@ -75,10 +75,7 @@ def _challenge_cookie(auth: Auth, request: Request, payload: dict[str, Any]) -> 
 
 
 def _read_challenge(auth: Auth, request: Request, purpose: str) -> dict[str, Any] | None:
-    from hayate.cookies import parse_cookies
-
-    cookies = parse_cookies(request.headers.get("cookie") or "")
-    raw = cookies.get(_cookie_name(True)) or cookies.get(CHALLENGE_COOKIE_BASE)
+    raw = sessions.read_scheme_bound_cookie(request, CHALLENGE_COOKIE_BASE)
     stored = unsign_payload(auth.secret, raw) if raw else None
     if (
         stored is None

@@ -34,7 +34,7 @@ from .password import (
 from .plugin import AuthPlugin
 from .principal import Principal
 
-__version__ = "0.9.1"
+__version__ = "0.10.2"
 
 __all__ = [
     "COMMON_PASSWORDS",

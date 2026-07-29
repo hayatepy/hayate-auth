@@ -301,10 +301,7 @@ def _as_cookie_name(secure: bool) -> str:
 
 
 def _read_as_cookie(auth: Auth, request: Request) -> dict[str, Any] | None:
-    from hayate.cookies import parse_cookies
-
-    cookies = parse_cookies(request.headers.get("cookie") or "")
-    raw = cookies.get(_as_cookie_name(True)) or cookies.get(AS_COOKIE_BASE)
+    raw = sessions.read_scheme_bound_cookie(request, AS_COOKIE_BASE)
     stored = unsign_payload(auth.secret, raw) if raw else None
     if stored is None or stored.get("expires", 0) < int(time.time()):
         return None

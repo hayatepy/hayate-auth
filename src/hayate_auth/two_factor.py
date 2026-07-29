@@ -150,8 +150,6 @@ def issue_challenge(auth: Auth, request: Request, user_id: str) -> Response:
 
 async def sign_in(auth: Auth, request: Request) -> Response:
     """Second step: exchange a valid TOTP code + challenge for a session."""
-    from hayate.cookies import parse_cookies
-
     from ._signed import unsign_payload
 
     data = await _read_json_object(request)
@@ -159,9 +157,7 @@ async def sign_in(auth: Auth, request: Request) -> Response:
         return data
     code = str(data.get("code", ""))
 
-    secure = sessions.is_secure_request(request)
-    cookies = parse_cookies(request.headers.get("cookie") or "")
-    raw = cookies.get(_challenge_cookie_name(secure)) or cookies.get(CHALLENGE_COOKIE_BASE)
+    raw = sessions.read_scheme_bound_cookie(request, CHALLENGE_COOKIE_BASE)
     stored = unsign_payload(auth.secret, raw) if raw else None
     if stored is None or stored.get("expires", 0) < int(time.time()):
         return problem(400, title="Invalid or expired two-factor challenge")
