@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "hayate-auth"
-version = "0.10.4"
+version = "0.10.5"
 description = "Standards-first authentication for hayate: sessions, OAuth 2.1, passkeys, API keys, and Cloudflare D1"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -28,6 +28,7 @@ passkey = ["webauthn>=3.0.0"]
 dpop = ["cryptography>=44.0.0"]
 
 [project.urls]
+Homepage = "https://hayatepy.dev/ecosystem/#hayate-auth"
 Repository = "https://github.com/hayatepy/hayate-auth"
 Documentation = "https://github.com/hayatepy/hayate-auth#readme"
 Changelog = "https://github.com/hayatepy/hayate-auth/blob/main/CHANGELOG.md"

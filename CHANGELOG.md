@@ -4,6 +4,13 @@ All notable changes to hayate-auth are documented here.
 
 ## Unreleased
 
+## [0.10.5] - 2026-07-30
+
+### Changed
+
+- Route package discovery, start, and tested-compatibility links through
+  `hayatepy.dev`, including the PyPI project homepage.
+
 ## [0.10.4] - 2026-07-30
 
 ### Security
