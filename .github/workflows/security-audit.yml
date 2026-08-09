@@ -16,7 +16,7 @@ jobs:
   audit-pack:
     name: audit-pack
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -31,7 +31,7 @@ jobs:
   sqlite-asgi:
     name: sqlite-asgi
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,7 +49,7 @@ jobs:
   postgres-schema:
     name: postgres-schema
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 1
     services:
       postgres:
         image: postgres:18.1-alpine@sha256:aa6eb304ddb6dd26df23d05db4e5cb05af8951cda3e0dc57731b771e0ef4ab29
@@ -92,7 +92,7 @@ jobs:
   workerd-d1:
     name: workerd-d1
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

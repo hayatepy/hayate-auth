@@ -7,12 +7,12 @@
   },
   "files": {
     ".github/workflows/ci.yml": {
-      "bytes": 3042,
-      "sha256": "fc8ad74951e8ac0a40d6270a2e18e489ad6e10441fd7e4401073687e9a514c1e"
+      "bytes": 3038,
+      "sha256": "6a44394e4b1f06d1f9b61746d0b0609daf3b539e97e6eb612ffa26971d7ebe46"
     },
     ".github/workflows/security-audit.yml": {
-      "bytes": 3355,
-      "sha256": "7f0aa74c27b96e848c5137b5b1c8328d66bd8c29d5040cad41a641461315a2fa"
+      "bytes": 3351,
+      "sha256": "afbf177b161812e5e7c81854ac438c15dea7fa69994a1b04fc4e06c45cf94bb4"
     },
     "CHANGELOG.md": {
       "bytes": 8730,
