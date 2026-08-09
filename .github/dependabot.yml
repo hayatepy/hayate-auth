@@ -2,6 +2,7 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
+    open-pull-requests-limit: 0
     directory: /
     schedule:
       interval: weekly
@@ -9,6 +10,7 @@ updates:
       actions:
         patterns: ["*"]
   - package-ecosystem: uv
+    open-pull-requests-limit: 0
     directories:
       - /
       - /examples/todo
